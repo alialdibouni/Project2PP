@@ -710,7 +710,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 62819b21477243a48a4cb1b5e629342e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mouseSensitivity: 300
+  mouseSensitivity: 500
   lockCursor: 1
   minPitch: -90
   maxPitch: 90
