@@ -75,4 +75,12 @@ public class CameraSwitcher : MonoBehaviour
             cinemachineCameras[i].SetActive(i == index);
         }
     }
+    public void ActivateCinemachineCameraByIndex(int index)
+    {
+        if (index >= 0 && index < cinemachineCameras.Length)
+        {
+            currentCinemachineIndex = index;
+            ActivateCinemachineCamera(currentCinemachineIndex);
+        }
+    }
 }
