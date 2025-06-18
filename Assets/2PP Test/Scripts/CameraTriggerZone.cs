@@ -4,11 +4,13 @@ public class CameraTriggerZone : MonoBehaviour
 {
     public int cinemachineCameraIndex;
     public CameraSwitcher cameraSwitcher;
+    public int cameraIndex;
 
     private void OnTriggerEnter(Collider other)
     {
         if (other.CompareTag("Player") && cameraSwitcher != null)
         {
+            cameraSwitcher.ActivateCameraByIndex(cameraIndex);
             cameraSwitcher.ActivateCinemachineCameraByIndex(cinemachineCameraIndex);
         }
     }

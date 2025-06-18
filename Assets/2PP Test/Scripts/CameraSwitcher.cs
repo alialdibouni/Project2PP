@@ -57,7 +57,7 @@ public class CameraSwitcher : MonoBehaviour
         {
             cameras[i].gameObject.SetActive(i == index);
         }
-    }
+    }   
 
     void SwitchToCinemachineCamera(int index)
     {
@@ -82,5 +82,14 @@ public class CameraSwitcher : MonoBehaviour
             currentCinemachineIndex = index;
             ActivateCinemachineCamera(currentCinemachineIndex);
         }
+    }
+
+    public void ActivateCameraByIndex(int index)
+    {
+        if (index >= 0 && index < cameras.Length)
+        {
+            currentCameraIndex = index;
+            ActivateCamera(currentCameraIndex);
+        }       
     }
 }
