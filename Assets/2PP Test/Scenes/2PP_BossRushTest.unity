@@ -2050,6 +2050,7 @@ GameObject:
   - component: {fileID: 1404075853}
   - component: {fileID: 1404075852}
   - component: {fileID: 1404075851}
+  - component: {fileID: 1404075855}
   m_Layer: 0
   m_Name: SplineDollyCamera2
   m_TagString: Untagged
@@ -2178,6 +2179,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1405104043}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1404075855
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1404075850}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68bb026fafb42b14791938953eaace77, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  NoiseProfile: {fileID: 11400000, guid: 95bc5bd9eee22614c9d6d123faa69acf, type: 2}
+  PivotOffset: {x: 0, y: 0, z: 0}
+  AmplitudeGain: 1
+  FrequencyGain: 1
+  m_NoiseOffsets: {x: 0, y: 0, z: 0}
 --- !u!1 &1405104042
 GameObject:
   m_ObjectHideFlags: 0
@@ -2535,6 +2553,7 @@ GameObject:
   - component: {fileID: 1679096939}
   - component: {fileID: 1679096941}
   - component: {fileID: 1679096937}
+  - component: {fileID: 1679096942}
   m_Layer: 0
   m_Name: SplineDollyCamera1
   m_TagString: Untagged
@@ -2663,6 +2682,23 @@ MonoBehaviour:
     RefIds:
     - rid: -2
       type: {class: , ns: , asm: }
+--- !u!114 &1679096942
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1679096936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68bb026fafb42b14791938953eaace77, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  NoiseProfile: {fileID: 11400000, guid: 95bc5bd9eee22614c9d6d123faa69acf, type: 2}
+  PivotOffset: {x: 0, y: 1, z: 0}
+  AmplitudeGain: 1
+  FrequencyGain: 1
+  m_NoiseOffsets: {x: 0, y: 0, z: 0}
 --- !u!1001 &1696103843
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2862,6 +2898,7 @@ GameObject:
   - component: {fileID: 1789141497}
   - component: {fileID: 1789141496}
   - component: {fileID: 1789141495}
+  - component: {fileID: 1789141499}
   m_Layer: 0
   m_Name: SplineDollyCamera3
   m_TagString: Untagged
@@ -2990,6 +3027,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1405104043}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1789141499
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1789141494}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68bb026fafb42b14791938953eaace77, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  NoiseProfile: {fileID: 11400000, guid: 95bc5bd9eee22614c9d6d123faa69acf, type: 2}
+  PivotOffset: {x: 0, y: 0, z: 0}
+  AmplitudeGain: 1
+  FrequencyGain: 1
+  m_NoiseOffsets: {x: 0, y: 0, z: 0}
 --- !u!4 &1792726035 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4030047905271298, guid: 9b7c1c724c5f1a342a82b4500738d35d, type: 3}
