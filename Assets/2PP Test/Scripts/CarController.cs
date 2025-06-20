@@ -10,10 +10,13 @@ public class CarController : MonoBehaviour
     public float steeringRangeAtMaxSpeed = 10f;
     public float centreOfGravityOffset = -1f;
 
+    public float CurrentSteeringInput { get; private set; }
+
     private WheelControl[] wheels;
     private Rigidbody rigidBody;
 
     private CarInputActions carControls; // Reference to the new input system
+
 
     void Awake()
     {
@@ -52,6 +55,7 @@ public class CarController : MonoBehaviour
         // Get player input for acceleration and steering
         float vInput = inputVector.y; // Forward/backward input
         float hInput = inputVector.x; // Steering input
+        CurrentSteeringInput = hInput;
 
         // Calculate current speed along the car's forward axis
         float forwardSpeed = Vector3.Dot(transform.forward, rigidBody.linearVelocity);
@@ -63,6 +67,8 @@ public class CarController : MonoBehaviour
 
         // Determine if the player is accelerating or trying to reverse
         bool isAccelerating = Mathf.Sign(vInput) == Mathf.Sign(forwardSpeed);
+
+        
 
         foreach (var wheel in wheels)
         {

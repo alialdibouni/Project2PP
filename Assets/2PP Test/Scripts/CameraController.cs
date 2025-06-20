@@ -9,6 +9,8 @@ public class CameraController : MonoBehaviour
     [Header("Camera Rotation Limits")]
     public float minPitch = -90f;
     public float maxPitch = 90f;
+    //public float minYaw = -180f;
+    //public float maxYaw = 180f;
 
     [SerializeField] private float yaw = 0f;
     [SerializeField] private float pitch = 0f;
@@ -40,6 +42,7 @@ public class CameraController : MonoBehaviour
         yaw += mouseX;
         pitch -= mouseY;
         pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        //yaw = Mathf.Clamp(yaw, minYaw, maxYaw); // Clamp yaw
 
         transform.eulerAngles = new Vector3(pitch, yaw, 0f);
     }
