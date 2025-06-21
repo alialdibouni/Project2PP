@@ -5,12 +5,9 @@ public class DriverAnimatorController : MonoBehaviour
 {
     public Animator animator;
     public CarController carController; // Reference to your CarController
-    //public GameObject steeringWheel;
-    private float animatorTurnAngle; // Angle for the animator to control turning
-    private float horizontal; // Horizontal input for steering
-
-    private bool wasSteeringLeft = false;
-    private bool wasSteeringRight = false;
+    public GameObject steeringWheel;
+    [SerializeField] private float animatorTurnAngle; // Angle for the animator to control turning
+    [SerializeField] private float horizontal; // Horizontal input for steering
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -19,17 +16,16 @@ public class DriverAnimatorController : MonoBehaviour
     }
 
     // Update is called once per frame
-    void FixedUpdate()
+    void Update()
     {
-        float steeringInput = 0f;
         if (carController != null)
         {
-            steeringInput = carController.CurrentSteeringInput;
+            animatorTurnAngle = carController.CurrentSteeringInput;
         }
 
         animatorTurnAngle = Mathf.Lerp(animatorTurnAngle, -horizontal, 20 * Time.deltaTime);
-        animator.SetFloat("turnAngle", steeringInput);
+        animator.SetFloat("turnAngle", animatorTurnAngle);
 
-        //steeringWheel.transform.localRotation = Quaternion.Euler(0, animatorTurnAngle * 35, 0);
+        steeringWheel.transform.localRotation = Quaternion.Euler(0, 0 , -animatorTurnAngle * 35);
     }
 }
