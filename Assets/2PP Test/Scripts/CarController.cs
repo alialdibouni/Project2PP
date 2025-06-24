@@ -10,13 +10,17 @@ public class CarController : MonoBehaviour
     public float steeringRangeAtMaxSpeed = 10f;
     public float centreOfGravityOffset = -1f;
 
+    [Header("Engine Audio")]
+    public AudioSource engineAudioSource; // Assign in Inspector
+    public float minEnginePitch = 1f;
+    public float maxEnginePitch = 2f;
+
     public float CurrentSteeringInput { get; private set; }
 
     private WheelControl[] wheels;
     private Rigidbody rigidBody;
 
     private CarInputActions carControls; // Reference to the new input system
-
 
     void Awake()
     {
@@ -44,6 +48,15 @@ public class CarController : MonoBehaviour
 
         // Get all wheel components attached to the car
         wheels = GetComponentsInChildren<WheelControl>();
+
+        // Ensure engine audio is set up
+        if (engineAudioSource != null)
+        {
+            engineAudioSource.loop = true;
+            engineAudioSource.playOnAwake = false;
+            if (!engineAudioSource.isPlaying)
+                engineAudioSource.Play();
+        }
     }
 
     // FixedUpdate is called at a fixed time interval
@@ -68,7 +81,17 @@ public class CarController : MonoBehaviour
         // Determine if the player is accelerating or trying to reverse
         bool isAccelerating = Mathf.Sign(vInput) == Mathf.Sign(forwardSpeed);
 
-        
+        // Update engine audio pitch based on forward speed
+        if (engineAudioSource != null)
+        {
+            // Only increase pitch when moving forward
+            float targetPitch = minEnginePitch;
+            if (forwardSpeed > 0.1f)
+            {
+                targetPitch = Mathf.Lerp(minEnginePitch, maxEnginePitch, speedFactor);
+            }
+            engineAudioSource.pitch = Mathf.MoveTowards(engineAudioSource.pitch, targetPitch, Time.fixedDeltaTime * 2f);
+        }
 
         foreach (var wheel in wheels)
         {
