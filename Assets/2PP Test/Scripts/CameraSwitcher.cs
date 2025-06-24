@@ -2,10 +2,10 @@ using UnityEngine;
 
 public class CameraSwitcher : MonoBehaviour
 {
-    [Header("Assign your cameras in order (1-4)")]
+    [Header("Assign your cameras in order")]
     public Camera[] cameras;
 
-    [Header("Assign your cinemachine cameras in order (1-4)")]
+    [Header("Assign your cinemachine cameras in order")]
     public GameObject[] cinemachineCameras;
 
     private int currentCameraIndex = 0;
@@ -23,6 +23,8 @@ public class CameraSwitcher : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchToCamera(1);
         if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchToCamera(2);
         if (Input.GetKeyDown(KeyCode.Alpha4)) SwitchToCamera(3);
+        if (Input.GetKeyDown(KeyCode.Alpha5)) SwitchToCamera(4);
+        if (Input.GetKeyDown(KeyCode.Alpha6)) SwitchToCamera(5);
 
         if (Input.GetKeyDown(KeyCode.Tab))
         {
@@ -34,6 +36,8 @@ public class CameraSwitcher : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha2)) SwitchToCinemachineCamera(1);
         if (Input.GetKeyDown(KeyCode.Alpha3)) SwitchToCinemachineCamera(2);
         if (Input.GetKeyDown(KeyCode.Alpha4)) SwitchToCinemachineCamera(3);
+        if (Input.GetKeyDown(KeyCode.Alpha5)) SwitchToCinemachineCamera(4);
+        if (Input.GetKeyDown(KeyCode.Alpha6)) SwitchToCinemachineCamera(5);
 
         if (Input.GetKeyDown(KeyCode.Tab))
         {
