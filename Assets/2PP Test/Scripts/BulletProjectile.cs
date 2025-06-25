@@ -53,4 +53,6 @@ public class BulletProjectile : MonoBehaviour
             Destroy(bullet, bulletLifetime); // Destroy the bullet after 5 seconds
         }
     }
+
+
 }
