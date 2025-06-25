@@ -45,11 +45,11 @@ public class CameraSwitcher : MonoBehaviour
             ActivateCinemachineCamera(currentCinemachineIndex);
         }
 
-        // Check for Animator on active Cinemachine camera and enable on J press
+        // Check for Animator on active Cinemachine camera and toggle on J press
         Animator animator = GetActiveCinemachineAnimator();
         if (animator != null && Input.GetKeyDown(KeyCode.J))
         {
-            animator.enabled = true;
+            animator.enabled = !animator.enabled;
         }
     }
 
