@@ -44,6 +44,22 @@ public class CameraSwitcher : MonoBehaviour
             currentCinemachineIndex = (currentCinemachineIndex + 1) % cinemachineCameras.Length;
             ActivateCinemachineCamera(currentCinemachineIndex);
         }
+
+        // Check for Animator on active Cinemachine camera and enable on J press
+        Animator animator = GetActiveCinemachineAnimator();
+        /*if (animator != null && Input.GetKeyDown(KeyCode.J))
+        {
+            animator.enabled = true;
+        }*/
+    }
+
+    private Animator GetActiveCinemachineAnimator()
+    {
+        if (currentCinemachineIndex >= 0 && currentCinemachineIndex < cinemachineCameras.Length)
+        {
+            return cinemachineCameras[currentCinemachineIndex].GetComponent<Animator>();
+        }
+        return null;
     }
 
     void SwitchToCamera(int index)
@@ -74,11 +90,19 @@ public class CameraSwitcher : MonoBehaviour
 
     void ActivateCinemachineCamera(int index)
     { 
-        for (int i =0; i < cinemachineCameras.Length; i++)
+        for (int i = 0; i < cinemachineCameras.Length; i++)
         {
-            cinemachineCameras[i].SetActive(i == index);
+            bool isActive = (i == index);
+            cinemachineCameras[i].SetActive(isActive);
+
+            Animator animator = cinemachineCameras[i].GetComponent<Animator>();
+            if (animator != null)
+            {
+                animator.enabled = isActive;
+            }
         }
     }
+
     public void ActivateCinemachineCameraByIndex(int index)
     {
         if (index >= 0 && index < cinemachineCameras.Length)
