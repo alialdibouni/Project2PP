@@ -28,6 +28,7 @@ public class BulletProjectile : MonoBehaviour
         {
             yield return new WaitForSeconds(reloadTime);
             SpawnBullet();
+
         }
     }
 
