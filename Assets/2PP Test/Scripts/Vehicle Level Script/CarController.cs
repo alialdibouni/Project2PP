@@ -15,41 +15,27 @@ public class CarController : MonoBehaviour
     public float minEnginePitch = 1f;
     public float maxEnginePitch = 2f;
 
+    [Header("External Input")]
+    [Tooltip("X = Steering, Y = Throttle/Brake")]
+    public Vector2 inputVector = Vector2.zero; // Set externally by player or AI
+
     public float CurrentSteeringInput { get; private set; }
+    public float CurrentAccelerationInput { get; private set; }
 
     private WheelControl[] wheels;
     private Rigidbody rigidBody;
 
-    private CarInputActions carControls; // Reference to the new input system
-
-    void Awake()
-    {
-        carControls = new CarInputActions(); // Initialize Input Actions
-    }
-    void OnEnable()
-    {
-        carControls.Enable();
-    }
-
-    void OnDisable()
-    {
-        carControls.Disable();
-    }
-
-    // Start is called before the first frame update
     void Start()
     {
         rigidBody = GetComponent<Rigidbody>();
 
-        // Adjust center of mass to improve stability and prevent rolling
+        // Adjust center of mass to improve stability
         Vector3 centerOfMass = rigidBody.centerOfMass;
         centerOfMass.y += centreOfGravityOffset;
         rigidBody.centerOfMass = centerOfMass;
 
-        // Get all wheel components attached to the car
         wheels = GetComponentsInChildren<WheelControl>();
 
-        // Ensure engine audio is set up
         if (engineAudioSource != null)
         {
             engineAudioSource.loop = true;
@@ -59,32 +45,24 @@ public class CarController : MonoBehaviour
         }
     }
 
-    // FixedUpdate is called at a fixed time interval
     void FixedUpdate()
     {
-        // Read the Vector2 input from the new Input System
-        Vector2 inputVector = carControls.Car.Movement.ReadValue<Vector2>();
+        float vInput = inputVector.y;
+        float hInput = inputVector.x;
 
-        // Get player input for acceleration and steering
-        float vInput = inputVector.y; // Forward/backward input
-        float hInput = inputVector.x; // Steering input
         CurrentSteeringInput = hInput;
+        CurrentAccelerationInput = vInput;
 
-        // Calculate current speed along the car's forward axis
         float forwardSpeed = Vector3.Dot(transform.forward, rigidBody.linearVelocity);
-        float speedFactor = Mathf.InverseLerp(0, maxSpeed, Mathf.Abs(forwardSpeed)); // Normalized speed factor
+        float speedFactor = Mathf.InverseLerp(0, maxSpeed, Mathf.Abs(forwardSpeed));
 
-        // Reduce motor torque and steering at high speeds for better handling
         float currentMotorTorque = Mathf.Lerp(motorTorque, 0, speedFactor);
         float currentSteerRange = Mathf.Lerp(steeringRange, steeringRangeAtMaxSpeed, speedFactor);
-
-        // Determine if the player is accelerating or trying to reverse
         bool isAccelerating = Mathf.Sign(vInput) == Mathf.Sign(forwardSpeed);
 
-        // Update engine audio pitch based on forward speed
+        // Engine audio pitch update
         if (engineAudioSource != null)
         {
-            // Only increase pitch when moving forward
             float targetPitch = minEnginePitch;
             if (forwardSpeed > 0.1f)
             {
@@ -93,9 +71,9 @@ public class CarController : MonoBehaviour
             engineAudioSource.pitch = Mathf.MoveTowards(engineAudioSource.pitch, targetPitch, Time.fixedDeltaTime * 2f);
         }
 
+        // Apply input to wheels
         foreach (var wheel in wheels)
         {
-            // Apply steering to wheels that support steering
             if (wheel.steerable)
             {
                 wheel.WheelCollider.steerAngle = hInput * currentSteerRange;
@@ -103,17 +81,14 @@ public class CarController : MonoBehaviour
 
             if (isAccelerating)
             {
-                // Apply torque to motorized wheels
                 if (wheel.motorized)
                 {
                     wheel.WheelCollider.motorTorque = vInput * currentMotorTorque;
                 }
-                // Release brakes when accelerating
                 wheel.WheelCollider.brakeTorque = 0f;
             }
             else
             {
-                // Apply brakes when reversing direction
                 wheel.WheelCollider.motorTorque = 0f;
                 wheel.WheelCollider.brakeTorque = Mathf.Abs(vInput) * brakeTorque;
             }
