@@ -10,8 +10,11 @@ public class AIDriver : MonoBehaviour
     [Tooltip("Steering input (-1 = left, 1 = right)")]
     [Range(-1f, 1f)] public float steering = 0f;
 
-    [Tooltip("Default throttle (1 = full forward)")]
+    [Tooltip("Default throttle (-1 = reverse | 0 = standstill | 1 = full forward)")]
     [Range(-1f, 1f)] public float throttle = 1f;
+
+    [Tooltip("Brake input (0 = no brake, 1 = full brake)")]
+    [Range(0f, 1f)] public float brake = 0f;
 
     [Header("Stuck Detection")]
     public float stuckVelocityThreshold = 0.5f;
