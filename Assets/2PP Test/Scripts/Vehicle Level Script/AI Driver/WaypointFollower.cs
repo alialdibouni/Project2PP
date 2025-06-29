@@ -44,6 +44,7 @@ public class WaypointFollower : MonoBehaviour
         // --- Find the closest segment ---
         float minDist = float.MaxValue;
         int closestIndex = currentIndex;
+        float closestT = 0f; // <-- Add this line
         for (int i = 0; i < waypoints.Count; i++)
         {
             Vector3 a = waypoints[i].position;
@@ -56,6 +57,7 @@ public class WaypointFollower : MonoBehaviour
             {
                 minDist = dist;
                 closestIndex = i;
+                closestT = t; // <-- Track t for the closest segment
             }
         }
         currentIndex = closestIndex;
@@ -69,9 +71,12 @@ public class WaypointFollower : MonoBehaviour
         Vector3 ab2 = b2 - a2;
         float t2 = Mathf.Clamp01(Vector3.Dot(pos - a2, ab2.normalized) / ab2.magnitude);
 
-        // Find lookahead point
-        float lookaheadT = Mathf.Clamp01(t2 + lookaheadDistance / ab2.magnitude);
-        Vector3 lookaheadPoint = Vector3.Lerp(a2, b2, lookaheadT);
+        // --- Dynamic lookahead distance based on speed ---
+        float speed = rb.linearVelocity.magnitude;
+        float dynamicLookahead = Mathf.Lerp(lookaheadDistance, lookaheadDistance * 3f, Mathf.InverseLerp(0, maxSafeSpeed, speed));
+
+        // --- Use improved lookahead ---
+        Vector3 lookaheadPoint = GetLookaheadPoint(pos, currentIndex, closestT, dynamicLookahead);
 
         // --- Steering ---
         Vector3 localTarget = transform.InverseTransformPoint(lookaheadPoint);
@@ -89,7 +94,6 @@ public class WaypointFollower : MonoBehaviour
         float bendAngle = Vector3.Angle(dirCurrent, dirNext);
 
         // --- Speed & Braking Control ---
-        float speed = rb.linearVelocity.magnitude;
         float speedFactor = Mathf.InverseLerp(minSafeSpeed, maxSafeSpeed, speed);
         float turnAngleFactor = Mathf.InverseLerp(turnSlowdownAngle, fullBrakeAngle, Mathf.Max(Mathf.Abs(angleToTarget), bendAngle));
         float totalBrakeFactor = Mathf.Clamp01(
@@ -102,38 +106,77 @@ public class WaypointFollower : MonoBehaviour
         aiDriver.brake = targetBrake;
     }
 
-#if UNITY_EDITOR
-    void OnDrawGizmos()
+    Vector3 GetLookaheadPoint(Vector3 pos, int startIndex, float tOnSegment, float lookaheadDist)
     {
-        if (waypoints == null || waypoints.Count == 0) return;
+        int segA = startIndex;
+        int segB = (segA + 1) % waypoints.Count;
+        Vector3 a = waypoints[segA].position;
+        Vector3 b = waypoints[segB].position;
+        Vector3 ab = b - a;
 
-        Gizmos.color = Color.green;
-        for (int i = 0; i < waypoints.Count; i++)
+        float segLength = ab.magnitude;
+        float distOnSeg = (1f - tOnSegment) * segLength;
+
+        if (lookaheadDist <= distOnSeg)
         {
-            Gizmos.DrawWireSphere(waypoints[i].position, 1f);
-            Gizmos.DrawLine(
-                waypoints[i].position,
-                waypoints[(i + 1) % waypoints.Count].position
-            );
+            float lookaheadT = tOnSegment + (lookaheadDist / segLength);
+            return Vector3.Lerp(a, b, lookaheadT);
         }
-
-        if (Application.isPlaying && waypoints.Count > currentIndex)
+        else
         {
-            // Draw lookahead point
-            Transform wpA = waypoints[currentIndex];
-            Transform wpB = waypoints[(currentIndex + 1) % waypoints.Count];
-            Vector3 pos = transform.position;
-            Vector3 a = wpA.position;
-            Vector3 b = wpB.position;
-            Vector3 ab = b - a;
-            float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
-            float lookaheadT = Mathf.Clamp01(t + lookaheadDistance / ab.magnitude);
-            Vector3 lookaheadPoint = Vector3.Lerp(a, b, lookaheadT);
-
-            Gizmos.color = Color.red;
-            Gizmos.DrawLine(transform.position, lookaheadPoint);
-            Gizmos.DrawWireSphere(lookaheadPoint, 0.5f);
+            float remaining = lookaheadDist - distOnSeg;
+            return GetLookaheadPoint(pos, segB, 0f, remaining);
         }
     }
+
+#if UNITY_EDITOR
+void OnDrawGizmos()
+{
+    if (waypoints == null || waypoints.Count == 0) return;
+
+    Gizmos.color = Color.green;
+    for (int i = 0; i < waypoints.Count; i++)
+    {
+        Gizmos.DrawWireSphere(waypoints[i].position, 1f);
+        Gizmos.DrawLine(
+            waypoints[i].position,
+            waypoints[(i + 1) % waypoints.Count].position
+        );
+    }
+
+    if (Application.isPlaying && waypoints.Count > currentIndex)
+    {
+        // Draw lookahead point using the same logic as Update
+        Vector3 pos = transform.position;
+
+        // Find closest segment and t
+        float minDist = float.MaxValue;
+        int closestIndex = currentIndex;
+        float closestT = 0f;
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            Vector3 a = waypoints[i].position;
+            Vector3 b = waypoints[(i + 1) % waypoints.Count].position;
+            Vector3 ab = b - a;
+            float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
+            Vector3 closestPoint = Vector3.Lerp(a, b, t);
+            float dist = (pos - closestPoint).sqrMagnitude;
+            if (dist < minDist)
+            {
+                minDist = dist;
+                closestIndex = i;
+                closestT = t;
+            }
+        }
+
+        float speed = rb != null ? rb.linearVelocity.magnitude : 0f;
+        float dynamicLookahead = Mathf.Lerp(lookaheadDistance, lookaheadDistance * 3f, Mathf.InverseLerp(0, maxSafeSpeed, speed));
+        Vector3 lookaheadPoint = GetLookaheadPoint(pos, closestIndex, closestT, dynamicLookahead);
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawLine(transform.position, lookaheadPoint);
+        Gizmos.DrawWireSphere(lookaheadPoint, 0.5f);
+    }
+}
 #endif
 }
