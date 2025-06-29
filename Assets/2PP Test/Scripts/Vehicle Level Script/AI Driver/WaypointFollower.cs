@@ -39,26 +39,39 @@ public class WaypointFollower : MonoBehaviour
         if (waypoints == null || waypoints.Count == 0)
             return;
 
-        // Find the segment we're on
+        Vector3 pos = transform.position;
+
+        // --- Find the closest segment ---
+        float minDist = float.MaxValue;
+        int closestIndex = currentIndex;
+        for (int i = 0; i < waypoints.Count; i++)
+        {
+            Vector3 a = waypoints[i].position;
+            Vector3 b = waypoints[(i + 1) % waypoints.Count].position;
+            Vector3 ab = b - a;
+            float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
+            Vector3 closestPoint = Vector3.Lerp(a, b, t);
+            float dist = (pos - closestPoint).sqrMagnitude;
+            if (dist < minDist)
+            {
+                minDist = dist;
+                closestIndex = i;
+            }
+        }
+        currentIndex = closestIndex;
+
+        // --- Continue as before ---
         Transform wpA = waypoints[currentIndex];
         Transform wpB = waypoints[(currentIndex + 1) % waypoints.Count];
 
-        // Project car position onto the segment
-        Vector3 pos = transform.position;
-        Vector3 a = wpA.position;
-        Vector3 b = wpB.position;
-        Vector3 ab = b - a;
-        float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
+        Vector3 a2 = wpA.position;
+        Vector3 b2 = wpB.position;
+        Vector3 ab2 = b2 - a2;
+        float t2 = Mathf.Clamp01(Vector3.Dot(pos - a2, ab2.normalized) / ab2.magnitude);
 
         // Find lookahead point
-        float lookaheadT = Mathf.Clamp01(t + lookaheadDistance / ab.magnitude);
-        Vector3 lookaheadPoint = Vector3.Lerp(a, b, lookaheadT);
-
-        // Advance waypoint if passed
-        if ((pos - b).magnitude < waypointPassThreshold)
-        {
-            currentIndex = (currentIndex + 1) % waypoints.Count;
-        }
+        float lookaheadT = Mathf.Clamp01(t2 + lookaheadDistance / ab2.magnitude);
+        Vector3 lookaheadPoint = Vector3.Lerp(a2, b2, lookaheadT);
 
         // --- Steering ---
         Vector3 localTarget = transform.InverseTransformPoint(lookaheadPoint);
@@ -67,31 +80,26 @@ public class WaypointFollower : MonoBehaviour
         aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
 
         // --- Predict Upcoming Turn ---
-        // Get next segment (for bend prediction)
         int nextIndex = (currentIndex + 1) % waypoints.Count;
         int nextNextIndex = (currentIndex + 2) % waypoints.Count;
         Vector3 nextA = waypoints[nextIndex].position;
         Vector3 nextB = waypoints[nextNextIndex].position;
-        Vector3 dirCurrent = (b - a).normalized;
+        Vector3 dirCurrent = (b2 - a2).normalized;
         Vector3 dirNext = (nextB - nextA).normalized;
-        float bendAngle = Vector3.Angle(dirCurrent, dirNext); // 0 = straight, 180 = sharp turn
+        float bendAngle = Vector3.Angle(dirCurrent, dirNext);
 
         // --- Speed & Braking Control ---
         float speed = rb.linearVelocity.magnitude;
         float speedFactor = Mathf.InverseLerp(minSafeSpeed, maxSafeSpeed, speed);
-
-        // Use the sharper of the current steering or upcoming bend
         float turnAngleFactor = Mathf.InverseLerp(turnSlowdownAngle, fullBrakeAngle, Mathf.Max(Mathf.Abs(angleToTarget), bendAngle));
-
         float totalBrakeFactor = Mathf.Clamp01(
             Mathf.Lerp(turnAngleFactor, turnAngleFactor * speedFactor, speedWeight)
         );
-
         float targetThrottle = Mathf.Lerp(baseThrottle, minThrottle, totalBrakeFactor);
-        float targetBrake = totalBrakeFactor; // More brake as the turn is sharper
+        float targetBrake = totalBrakeFactor;
 
         aiDriver.throttle = targetThrottle;
-        aiDriver.brake = targetBrake; // You must use this in your CarController
+        aiDriver.brake = targetBrake;
     }
 
 #if UNITY_EDITOR
