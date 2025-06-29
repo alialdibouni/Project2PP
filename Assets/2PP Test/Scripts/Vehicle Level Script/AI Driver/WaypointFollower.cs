@@ -11,7 +11,7 @@ public class WaypointFollower : MonoBehaviour
     public float waypointPassThreshold = 2f;
     public float maxSteeringAngle = 45f;
     public float steeringSmoothing = 5f;
-    public float lookaheadDistance = 5f; // NEW: How far ahead to look on the path
+    public float lookaheadDistance = 5f;
 
     [Header("Throttle Control")]
     public float baseThrottle = 1f;
@@ -24,9 +24,28 @@ public class WaypointFollower : MonoBehaviour
     public float minSafeSpeed = 5f;
     public float speedWeight = 0.7f;
 
+    [Header("Recovery Settings")]
+    [Tooltip("How long to stop before reversing (seconds)")]
+    public float recoveryStopDuration = 1f;
+    [Tooltip("How long to reverse when spun out (seconds)")]
+    public float recoveryReverseDuration = 2f;
+    [Tooltip("How long to pause after reversing (seconds)")]
+    public float recoveryPauseDuration = 0.5f;
+
     private int currentIndex = 0;
     private AIDriver aiDriver;
     private Rigidbody rb;
+    private bool reversing = false;
+
+    // Thresholds for reversing logic
+    private const float reverseEnterAlignment = 0.0f;   // Enter reverse if facing >90° away
+    private const float reverseExitAlignment = 0.5f;    // Exit reverse if facing within ~60°
+    private const float minReverseSpeed = 1.0f;         // Only reverse if nearly stopped
+
+    // Recovery state machine
+    private enum RecoveryState { None, Stopping, Reversing, Recovering }
+    private RecoveryState recoveryState = RecoveryState.None;
+    private float recoveryTimer = 0f;
 
     void Awake()
     {
@@ -44,7 +63,7 @@ public class WaypointFollower : MonoBehaviour
         // --- Find the closest segment ---
         float minDist = float.MaxValue;
         int closestIndex = currentIndex;
-        float closestT = 0f; // <-- Add this line
+        float closestT = 0f;
         for (int i = 0; i < waypoints.Count; i++)
         {
             Vector3 a = waypoints[i].position;
@@ -57,19 +76,13 @@ public class WaypointFollower : MonoBehaviour
             {
                 minDist = dist;
                 closestIndex = i;
-                closestT = t; // <-- Track t for the closest segment
+                closestT = t;
             }
         }
         currentIndex = closestIndex;
 
-        // --- Continue as before ---
         Transform wpA = waypoints[currentIndex];
         Transform wpB = waypoints[(currentIndex + 1) % waypoints.Count];
-
-        Vector3 a2 = wpA.position;
-        Vector3 b2 = wpB.position;
-        Vector3 ab2 = b2 - a2;
-        float t2 = Mathf.Clamp01(Vector3.Dot(pos - a2, ab2.normalized) / ab2.magnitude);
 
         // --- Dynamic lookahead distance based on speed ---
         float speed = rb.linearVelocity.magnitude;
@@ -78,7 +91,65 @@ public class WaypointFollower : MonoBehaviour
         // --- Use improved lookahead ---
         Vector3 lookaheadPoint = GetLookaheadPoint(pos, currentIndex, closestT, dynamicLookahead);
 
-        // --- Steering ---
+        // --- Path direction (for spin-out detection) ---
+        Vector3 pathDir = (lookaheadPoint - pos).normalized;
+        Vector3 carForward = transform.forward;
+        float alignment = Vector3.Dot(carForward, pathDir); // 1 = aligned, -1 = opposite
+
+        // --- Simple recovery state machine ---
+        switch (recoveryState)
+        {
+            case RecoveryState.None:
+                if (alignment < 0f) // Facing away from path
+                {
+                    recoveryState = RecoveryState.Stopping;
+                    recoveryTimer = recoveryStopDuration;
+                    aiDriver.throttle = 0f;
+                    aiDriver.brake = 1f;
+                    return;
+                }
+                break;
+
+            case RecoveryState.Stopping:
+                recoveryTimer -= Time.deltaTime;
+                aiDriver.throttle = 0f;
+                aiDriver.brake = 1f;
+                if (recoveryTimer <= 0f)
+                {
+                    recoveryState = RecoveryState.Reversing;
+                    recoveryTimer = recoveryReverseDuration;
+                }
+                return;
+
+            case RecoveryState.Reversing:
+                recoveryTimer -= Time.deltaTime;
+                // Steer so the front of the car turns toward the path while reversing
+                Vector3 localPathDir = transform.InverseTransformDirection(pathDir);
+                float angleToPath = Mathf.Atan2(localPathDir.x, localPathDir.z) * Mathf.Rad2Deg;
+                float reverseSteering = Mathf.Clamp(-angleToPath / maxSteeringAngle, -1f, 1f);
+
+                aiDriver.steering = Mathf.Lerp(aiDriver.steering, reverseSteering, Time.deltaTime * steeringSmoothing);
+                aiDriver.throttle = -1f;
+                aiDriver.brake = 0f;
+                if (recoveryTimer <= 0f)
+                {
+                    recoveryState = RecoveryState.Recovering;
+                    recoveryTimer = recoveryPauseDuration;
+                }
+                return;
+
+            case RecoveryState.Recovering:
+                recoveryTimer -= Time.deltaTime;
+                aiDriver.throttle = 0f;
+                aiDriver.brake = 1f;
+                if (recoveryTimer <= 0f)
+                {
+                    recoveryState = RecoveryState.None;
+                }
+                return;
+        }
+
+        // --- Normal driving logic ---
         Vector3 localTarget = transform.InverseTransformPoint(lookaheadPoint);
         float angleToTarget = Mathf.Atan2(localTarget.x, localTarget.z) * Mathf.Rad2Deg;
         float normalizedSteering = Mathf.Clamp(angleToTarget / maxSteeringAngle, -1f, 1f);
@@ -89,7 +160,7 @@ public class WaypointFollower : MonoBehaviour
         int nextNextIndex = (currentIndex + 2) % waypoints.Count;
         Vector3 nextA = waypoints[nextIndex].position;
         Vector3 nextB = waypoints[nextNextIndex].position;
-        Vector3 dirCurrent = (b2 - a2).normalized;
+        Vector3 dirCurrent = (wpB.position - wpA.position).normalized;
         Vector3 dirNext = (nextB - nextA).normalized;
         float bendAngle = Vector3.Angle(dirCurrent, dirNext);
 
@@ -130,53 +201,53 @@ public class WaypointFollower : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-void OnDrawGizmos()
-{
-    if (waypoints == null || waypoints.Count == 0) return;
-
-    Gizmos.color = Color.green;
-    for (int i = 0; i < waypoints.Count; i++)
+    void OnDrawGizmos()
     {
-        Gizmos.DrawWireSphere(waypoints[i].position, 1f);
-        Gizmos.DrawLine(
-            waypoints[i].position,
-            waypoints[(i + 1) % waypoints.Count].position
-        );
-    }
+        if (waypoints == null || waypoints.Count == 0) return;
 
-    if (Application.isPlaying && waypoints.Count > currentIndex)
-    {
-        // Draw lookahead point using the same logic as Update
-        Vector3 pos = transform.position;
-
-        // Find closest segment and t
-        float minDist = float.MaxValue;
-        int closestIndex = currentIndex;
-        float closestT = 0f;
+        Gizmos.color = Color.green;
         for (int i = 0; i < waypoints.Count; i++)
         {
-            Vector3 a = waypoints[i].position;
-            Vector3 b = waypoints[(i + 1) % waypoints.Count].position;
-            Vector3 ab = b - a;
-            float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
-            Vector3 closestPoint = Vector3.Lerp(a, b, t);
-            float dist = (pos - closestPoint).sqrMagnitude;
-            if (dist < minDist)
-            {
-                minDist = dist;
-                closestIndex = i;
-                closestT = t;
-            }
+            Gizmos.DrawWireSphere(waypoints[i].position, 1f);
+            Gizmos.DrawLine(
+                waypoints[i].position,
+                waypoints[(i + 1) % waypoints.Count].position
+            );
         }
 
-        float speed = rb != null ? rb.linearVelocity.magnitude : 0f;
-        float dynamicLookahead = Mathf.Lerp(lookaheadDistance, lookaheadDistance * 3f, Mathf.InverseLerp(0, maxSafeSpeed, speed));
-        Vector3 lookaheadPoint = GetLookaheadPoint(pos, closestIndex, closestT, dynamicLookahead);
+        if (Application.isPlaying && waypoints.Count > currentIndex)
+        {
+            // Draw lookahead point using the same logic as Update
+            Vector3 pos = transform.position;
 
-        Gizmos.color = Color.red;
-        Gizmos.DrawLine(transform.position, lookaheadPoint);
-        Gizmos.DrawWireSphere(lookaheadPoint, 0.5f);
+            // Find closest segment and t
+            float minDist = float.MaxValue;
+            int closestIndex = currentIndex;
+            float closestT = 0f;
+            for (int i = 0; i < waypoints.Count; i++)
+            {
+                Vector3 a = waypoints[i].position;
+                Vector3 b = waypoints[(i + 1) % waypoints.Count].position;
+                Vector3 ab = b - a;
+                float t = Mathf.Clamp01(Vector3.Dot(pos - a, ab.normalized) / ab.magnitude);
+                Vector3 closestPoint = Vector3.Lerp(a, b, t);
+                float dist = (pos - closestPoint).sqrMagnitude;
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    closestIndex = i;
+                    closestT = t;
+                }
+            }
+
+            float speed = rb != null ? rb.linearVelocity.magnitude : 0f;
+            float dynamicLookahead = Mathf.Lerp(lookaheadDistance, lookaheadDistance * 3f, Mathf.InverseLerp(0, maxSafeSpeed, speed));
+            Vector3 lookaheadPoint = GetLookaheadPoint(pos, closestIndex, closestT, dynamicLookahead);
+
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(transform.position, lookaheadPoint);
+            Gizmos.DrawWireSphere(lookaheadPoint, 0.5f);
+        }
     }
-}
 #endif
 }
