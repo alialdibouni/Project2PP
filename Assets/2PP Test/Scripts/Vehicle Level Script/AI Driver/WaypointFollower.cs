@@ -115,7 +115,6 @@ public class WaypointFollower : MonoBehaviour
                     recoveryState = RecoveryState.Stopping;
                     recoveryTimer = recoveryStopDuration;
                     aiDriver.throttle = 0f;
-                    aiDriver.brake = 1f;
                     return;
                 }
                 break;
@@ -123,7 +122,6 @@ public class WaypointFollower : MonoBehaviour
             case RecoveryState.Stopping:
                 recoveryTimer -= Time.deltaTime;
                 aiDriver.throttle = 0f;
-                aiDriver.brake = 1f;
                 if (recoveryTimer <= 0f)
                 {
                     recoveryState = RecoveryState.Reversing;
@@ -140,7 +138,6 @@ public class WaypointFollower : MonoBehaviour
 
                 aiDriver.steering = Mathf.Lerp(aiDriver.steering, reverseSteering, Time.deltaTime * steeringSmoothing);
                 aiDriver.throttle = -1f;
-                aiDriver.brake = 0f;
                 if (recoveryTimer <= 0f)
                 {
                     recoveryState = RecoveryState.Recovering;
@@ -151,7 +148,6 @@ public class WaypointFollower : MonoBehaviour
             case RecoveryState.Recovering:
                 recoveryTimer -= Time.deltaTime;
                 aiDriver.throttle = 0f;
-                aiDriver.brake = 1f;
                 if (recoveryTimer <= 0f)
                 {
                     recoveryState = RecoveryState.None;
@@ -174,8 +170,7 @@ public class WaypointFollower : MonoBehaviour
 
         if (nearBrakePoint)
         {
-            aiDriver.throttle = 0f; // No throttle for full coasting/braking
-            aiDriver.brake = 1f;    // Full brake
+            aiDriver.throttle = -0.2f; // No throttle for full coasting/braking
             aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
             return;
         }
@@ -199,11 +194,9 @@ public class WaypointFollower : MonoBehaviour
             Mathf.Lerp(turnAngleFactor, turnAngleFactor * speedFactor, speedWeight)
         );
         float targetThrottle = Mathf.Lerp(baseThrottle, minThrottle, totalBrakeFactor);
-        float targetBrake = totalBrakeFactor;
 
         // Smooth transitions
         aiDriver.throttle = Mathf.Lerp(aiDriver.throttle, targetThrottle, Time.deltaTime * 3f);
-        aiDriver.brake = Mathf.Lerp(aiDriver.brake, targetBrake, Time.deltaTime * 3f);
     }
 
     Vector3 GetLookaheadPoint(Vector3 pos, int startIndex, float tOnSegment, float lookaheadDist)
