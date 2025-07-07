@@ -23,6 +23,12 @@ public class AIDriver : MonoBehaviour
     private float reverseTimer = 0f;
     private bool reversing = false;
 
+    [Header("Debug")]
+    [Tooltip("Current speed of the car in MPH (read-only)")]
+    [SerializeField] private float currentSpeedMph;
+
+    public float CurrentSpeedMph => currentSpeedMph;
+
     void Awake()
     {
         carController = GetComponent<CarController>();
@@ -32,6 +38,7 @@ public class AIDriver : MonoBehaviour
     void Update()
     {
         float speed = rb.linearVelocity.magnitude;
+        currentSpeedMph = speed * 2.23694f;
 
         if (!reversing)
         {

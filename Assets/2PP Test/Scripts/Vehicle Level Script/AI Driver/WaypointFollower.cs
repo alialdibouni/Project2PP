@@ -11,6 +11,8 @@ public class WaypointFollower : MonoBehaviour
     public List<Transform> brakePoints = new List<Transform>();
     [Tooltip("Distance to start braking before a brake point")]
     public float brakePointRadius = 8f;
+    [Tooltip("Target speed (in MPH) to slow down to at brake points")]
+    public float brakePointTargetSpeedMph = 10f;
 
     [Header("Movement Settings")]
     public float waypointPassThreshold = 2f;
@@ -170,7 +172,15 @@ public class WaypointFollower : MonoBehaviour
 
         if (nearBrakePoint)
         {
-            aiDriver.throttle = -0.2f; // No throttle for full coasting/braking
+            // --- Throttle logic for braking based on speed in mph ---
+            float speedMph = aiDriver.CurrentSpeedMph;
+            if (speedMph > brakePointTargetSpeedMph)
+                aiDriver.throttle = -1f; // full brake/reverse
+            else if (speedMph > brakePointTargetSpeedMph * 0.5f)
+                aiDriver.throttle = -0.5f; // moderate brake
+            else
+                aiDriver.throttle = 0f; // coasting/stop
+
             aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
             return;
         }
