@@ -7,6 +7,11 @@ public class WaypointFollower : MonoBehaviour
     [Header("Waypoints")]
     public List<Transform> waypoints = new List<Transform>();
 
+    [Header("Brake Points")]
+    public List<Transform> brakePoints = new List<Transform>();
+    [Tooltip("Distance to start braking before a brake point")]
+    public float brakePointRadius = 8f;
+
     [Header("Movement Settings")]
     public float waypointPassThreshold = 2f;
     public float maxSteeringAngle = 45f;
@@ -91,6 +96,11 @@ public class WaypointFollower : MonoBehaviour
         // --- Use improved lookahead ---
         Vector3 lookaheadPoint = GetLookaheadPoint(pos, currentIndex, closestT, dynamicLookahead);
 
+        // Steering calculation
+        Vector3 localTarget = transform.InverseTransformPoint(lookaheadPoint);
+        float angleToTarget = Mathf.Atan2(localTarget.x, localTarget.z) * Mathf.Rad2Deg;
+        float normalizedSteering = Mathf.Clamp(angleToTarget / maxSteeringAngle, -1f, 1f);
+
         // --- Path direction (for spin-out detection) ---
         Vector3 pathDir = (lookaheadPoint - pos).normalized;
         Vector3 carForward = transform.forward;
@@ -149,10 +159,28 @@ public class WaypointFollower : MonoBehaviour
                 return;
         }
 
+        // --- Brake Point Detection ---
+        bool nearBrakePoint = false;
+        foreach (var bp in brakePoints)
+        {
+            if (bp == null) continue;
+            float dist = Vector3.Distance(pos, bp.position);
+            if (dist < brakePointRadius)
+            {
+                nearBrakePoint = true;
+                break;
+            }
+        }
+
+        if (nearBrakePoint)
+        {
+            aiDriver.throttle = 0f; // No throttle for full coasting/braking
+            aiDriver.brake = 1f;    // Full brake
+            aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
+            return;
+        }
+
         // --- Normal driving logic ---
-        Vector3 localTarget = transform.InverseTransformPoint(lookaheadPoint);
-        float angleToTarget = Mathf.Atan2(localTarget.x, localTarget.z) * Mathf.Rad2Deg;
-        float normalizedSteering = Mathf.Clamp(angleToTarget / maxSteeringAngle, -1f, 1f);
         aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
 
         // --- Predict Upcoming Turn ---
@@ -173,8 +201,9 @@ public class WaypointFollower : MonoBehaviour
         float targetThrottle = Mathf.Lerp(baseThrottle, minThrottle, totalBrakeFactor);
         float targetBrake = totalBrakeFactor;
 
-        aiDriver.throttle = targetThrottle;
-        aiDriver.brake = targetBrake;
+        // Smooth transitions
+        aiDriver.throttle = Mathf.Lerp(aiDriver.throttle, targetThrottle, Time.deltaTime * 3f);
+        aiDriver.brake = Mathf.Lerp(aiDriver.brake, targetBrake, Time.deltaTime * 3f);
     }
 
     Vector3 GetLookaheadPoint(Vector3 pos, int startIndex, float tOnSegment, float lookaheadDist)
@@ -213,6 +242,18 @@ public class WaypointFollower : MonoBehaviour
                 waypoints[i].position,
                 waypoints[(i + 1) % waypoints.Count].position
             );
+        }
+
+        if (brakePoints != null)
+        {
+            Gizmos.color = Color.yellow;
+            foreach (var bp in brakePoints)
+            {
+                if (bp != null)
+                {
+                    Gizmos.DrawWireSphere(bp.position, brakePointRadius);
+                }
+            }
         }
 
         if (Application.isPlaying && waypoints.Count > currentIndex)
