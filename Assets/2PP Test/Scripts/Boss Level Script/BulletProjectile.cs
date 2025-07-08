@@ -21,7 +21,7 @@ public class BulletProjectile : MonoBehaviour
         }
 
         // Find the TargetPlayer script in the scene
-        targetPlayer = FindObjectOfType<TargetPlayer>();
+        targetPlayer = Object.FindFirstObjectByType<TargetPlayer>();
 
         StartCoroutine(SpawnBulletRoutine());
     }
