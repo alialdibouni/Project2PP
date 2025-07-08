@@ -9,26 +9,34 @@ public class BulletProjectile : MonoBehaviour
     public float bulletLifetime = 5f; // Time after which the bullet is destroyed
 
     private Transform playerTransform;
+    private TargetPlayer targetPlayer; // Reference to TargetPlayer
+
     void Start()
     {
         // Find the player by tag. Make sure your player GameObject is tagged as "Player"
-            GameObject player = GameObject.FindGameObjectWithTag("Player");
-            if (player != null)
-            {
-                playerTransform = player.transform;
-            }
-            StartCoroutine(SpawnBulletRoutine());
-    }
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+        {
+            playerTransform = player.transform;
+        }
 
-    
+        // Find the TargetPlayer script in the scene
+        targetPlayer = FindObjectOfType<TargetPlayer>();
+
+        StartCoroutine(SpawnBulletRoutine());
+    }
 
     System.Collections.IEnumerator SpawnBulletRoutine()
     {
         while (true)
         {
             yield return new WaitForSeconds(reloadTime);
-            SpawnBullet();
 
+            // Only shoot if the player is in view
+            if (targetPlayer != null && targetPlayer.IsPlayerInView)
+            {
+                SpawnBullet();
+            }
         }
     }
 
@@ -53,6 +61,4 @@ public class BulletProjectile : MonoBehaviour
             Destroy(bullet, bulletLifetime); // Destroy the bullet after 5 seconds
         }
     }
-
-
 }
