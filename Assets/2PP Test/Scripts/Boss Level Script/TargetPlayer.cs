@@ -11,6 +11,12 @@ public class TargetPlayer : MonoBehaviour
     [Header("Raycast Ignore Settings")]
     public string[] ignoredTags;
 
+    [Header("Cinemachine Camera Switching")]
+    public GameObject[] cinemachineCameras;
+    public float notInViewDuration = 5f;
+    private float notInViewTimer = 0f;
+    private int currentCinemachineIndex = 0;
+
     private bool playerInView = false;
     public bool IsPlayerInView => playerInView;
 
@@ -32,6 +38,12 @@ public class TargetPlayer : MonoBehaviour
         rayDirections = new Vector3[rayCount];
         rayHitDistances = new float[rayCount];
         rayHitSomething = new bool[rayCount];
+
+        // Ensure only the first Cinemachine camera is active at start
+        if (cinemachineCameras != null && cinemachineCameras.Length > 0)
+        {
+            ActivateCinemachineCamera(currentCinemachineIndex);
+        }
     }
 
     void Update()
@@ -48,6 +60,33 @@ public class TargetPlayer : MonoBehaviour
                 lastLoggedPlayerInView = playerInView;
                 logTimer = 0f;
             }
+        }
+
+        // Cinemachine camera switching logic
+        if (cinemachineCameras != null && cinemachineCameras.Length > 1)
+        {
+            if (!playerInView)
+            {
+                notInViewTimer += Time.deltaTime;
+                if (notInViewTimer >= notInViewDuration)
+                {
+                    currentCinemachineIndex = (currentCinemachineIndex + 1) % cinemachineCameras.Length;
+                    ActivateCinemachineCamera(currentCinemachineIndex);
+                    notInViewTimer = 0f;
+                }
+            }
+            else
+            {
+                notInViewTimer = 0f;
+            }
+        }
+    }
+
+    private void ActivateCinemachineCamera(int index)
+    {
+        for (int i = 0; i < cinemachineCameras.Length; i++)
+        {
+            cinemachineCameras[i].SetActive(i == index);
         }
     }
 
