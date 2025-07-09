@@ -15,8 +15,28 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float yaw = 0f;
     [SerializeField] private float pitch = 0f;
 
+    [Header("Zoom Settings")]
+    public float defaultFOV = 90f;
+    public float zoomFOV = 30f;
+    public float zoomSpeed = 10f;
+    public float minZoomFOV = 15f;
+    public float maxZoomFOV = 60f;
+    public float zoomScrollSensitivity = 10f;
+
+    private Camera cam;
+
     void Start()
     {
+        cam = GetComponent<Camera>();
+        if (cam == null)
+        {
+            cam = GetComponentInChildren<Camera>();
+        }
+        if (cam != null)
+        {
+            cam.fieldOfView = defaultFOV;
+        }
+
         Vector3 angles = transform.eulerAngles;
         yaw = angles.y;
         pitch = angles.x;
@@ -32,6 +52,7 @@ public class CameraController : MonoBehaviour
     {
         HandleMouseLook();
         HandleCursorToggle();
+        HandleZoom();
     }
 
     void HandleMouseLook()
@@ -42,7 +63,6 @@ public class CameraController : MonoBehaviour
         yaw += mouseX;
         pitch -= mouseY;
         pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
-        //yaw = Mathf.Clamp(yaw, minYaw, maxYaw); // Clamp yaw
 
         transform.eulerAngles = new Vector3(pitch, yaw, 0f);
     }
@@ -62,5 +82,24 @@ public class CameraController : MonoBehaviour
                 Cursor.visible = false;
             }
         }
+    }
+
+    void HandleZoom()
+    {
+        if (cam == null) return;
+
+        // Allow scroll wheel to adjust zoomFOV only while zoomed in
+        if (Input.GetMouseButton(1))
+        {
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                zoomFOV -= scroll * zoomScrollSensitivity;
+                zoomFOV = Mathf.Clamp(zoomFOV, minZoomFOV, maxZoomFOV);
+            }
+        }
+
+        float targetFOV = Input.GetMouseButton(1) ? zoomFOV : defaultFOV;
+        cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFOV, zoomSpeed * Time.deltaTime);
     }
 }
