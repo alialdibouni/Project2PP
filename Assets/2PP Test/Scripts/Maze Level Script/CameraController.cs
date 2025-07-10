@@ -41,17 +41,17 @@ public class CameraController : MonoBehaviour
         yaw = angles.y;
         pitch = angles.x;
 
-        if (lockCursor)
+        /*if (lockCursor)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
-        }
+        }*/
     }
 
     void Update()
     {
         HandleMouseLook();
-        HandleCursorToggle();
+        //HandleCursorToggle();
         HandleZoom();
     }
 
