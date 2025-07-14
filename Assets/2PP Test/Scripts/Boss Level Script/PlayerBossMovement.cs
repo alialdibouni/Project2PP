@@ -49,7 +49,7 @@ public class PlayerBossMovement : MonoBehaviour
         else
         {
             // Battle mode movement: WASD for movement relative to player, always face enemy
-            float moveVertical = Input.GetAxis("Vertical");
+            float moveVertical = Input.GetAxis("Vertical") * -1f;
             float moveHorizontal = Input.GetAxis("Horizontal") * -1f; // Invert left/right movement
             Vector3 movement = (transform.forward * moveVertical + transform.right * moveHorizontal) * speed * Time.fixedDeltaTime;
             rb.MovePosition(rb.position + movement);

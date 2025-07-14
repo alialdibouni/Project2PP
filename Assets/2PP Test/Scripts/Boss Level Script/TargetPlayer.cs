@@ -3,7 +3,7 @@ using UnityEngine;
 public class TargetPlayer : MonoBehaviour
 {
     [Header("Ray Cone Settings")]
-    public Camera targetCamera;
+    public GameObject rayOriginObject; // Use this GameObject's position and forward for rays
     public int rayCount = 20;
     public float coneAngle = 30f;
     public float rayLength = 10f;
@@ -93,11 +93,11 @@ public class TargetPlayer : MonoBehaviour
     // This method updates playerInView and stores ray info for gizmos
     private void UpdatePlayerInView()
     {
-        if (targetCamera == null)
+        if (rayOriginObject == null)
             return;
 
-        Vector3 origin = targetCamera.transform.position;
-        Vector3 forward = targetCamera.transform.forward;
+        Vector3 origin = rayOriginObject.transform.position;
+        Vector3 forward = rayOriginObject.transform.forward;
 
         playerInView = false;
 
@@ -184,10 +184,10 @@ public class TargetPlayer : MonoBehaviour
     void OnDrawGizmos()
     {
         // Only draw if we have ray data (from Update)
-        if (targetCamera == null || rayDirections == null)
+        if (rayOriginObject == null || rayDirections == null)
             return;
 
-        Vector3 origin = targetCamera.transform.position;
+        Vector3 origin = rayOriginObject.transform.position;
 
         for (int i = 0; i < raysDrawn; i++)
         {
