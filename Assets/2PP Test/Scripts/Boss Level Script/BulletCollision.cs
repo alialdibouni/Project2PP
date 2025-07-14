@@ -18,10 +18,15 @@ public class BulletCollision : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
+        // Optional: Add player-specific logic here
         if (collision.gameObject.CompareTag("Player"))
         {
             Debug.Log("Bullet hit the player!");
+            // TODO: Apply damage or other effects
             Destroy(gameObject);
         }
+
+        // Destroy the bullet on any collision
+        Destroy(gameObject);
     }
 }

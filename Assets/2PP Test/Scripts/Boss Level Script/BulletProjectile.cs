@@ -11,6 +11,9 @@ public class BulletProjectile : MonoBehaviour
     private Transform playerTransform;
     private TargetPlayer targetPlayer; // Reference to TargetPlayer
 
+    [Header("Raycast Ignore Settings")]
+    public string[] ignoredTags;
+
     void Start()
     {
         // Find the player by tag. Make sure your player GameObject is tagged as "Player"
@@ -51,14 +54,38 @@ public class BulletProjectile : MonoBehaviour
             );
 
             Rigidbody rb = bullet.GetComponent<Rigidbody>();
+            Collider bulletCollider = bullet.GetComponent<Collider>();
+            Collider spawnCollider = bulletLocation.GetComponent<Collider>();
+
+            if (bulletCollider != null && spawnCollider != null)
+            {
+                Physics.IgnoreCollision(bulletCollider, spawnCollider);
+            }
+
             if (rb != null)
             {
-                // Calculate direction towards the player
                 Vector3 direction = (playerTransform.position - bulletLocation.transform.position).normalized;
                 rb.linearVelocity = direction * bulletSpeed;
             }
 
-            Destroy(bullet, bulletLifetime); // Destroy the bullet after 5 seconds
+            // Ignore collisions with all colliders with ignored tags
+            if (bulletCollider != null && ignoredTags != null && ignoredTags.Length > 0)
+            {
+                foreach (string tag in ignoredTags)
+                {
+                    GameObject[] ignoredObjects = GameObject.FindGameObjectsWithTag(tag);
+                    foreach (GameObject obj in ignoredObjects)
+                    {
+                        Collider[] colliders = obj.GetComponentsInChildren<Collider>();
+                        foreach (Collider col in colliders)
+                        {
+                            Physics.IgnoreCollision(bulletCollider, col);
+                        }
+                    }
+                }
+            }
+
+            Destroy(bullet, bulletLifetime);
         }
     }
 }
