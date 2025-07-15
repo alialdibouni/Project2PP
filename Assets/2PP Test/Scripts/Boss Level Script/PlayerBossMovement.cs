@@ -9,7 +9,7 @@ public class PlayerBossMovement : MonoBehaviour
     public Transform enemyTarget; // Reference to the enemy to target.
 
     private Rigidbody rb; // Reference to player's Rigidbody.
-    [SerializeField] private bool isBattleMode = false; // Tracks current control scheme.
+    public bool isBattleMode = false; // Tracks current control scheme.
 
     // Start is called before the first frame update
     private void Start()
