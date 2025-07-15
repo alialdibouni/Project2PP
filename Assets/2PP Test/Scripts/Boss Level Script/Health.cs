@@ -7,22 +7,27 @@ public class Health : MonoBehaviour
     public float recoveryDelay = 2f; // Seconds to wait before starting recovery
 
     private float lastDamageTime = -Mathf.Infinity;
+    private float lastHealth;
+
+    void Start()
+    {
+        lastHealth = health;
+    }
 
     // Clamp health between 0 and 100
     public void SetHealth(float value)
     {
         health = Mathf.Clamp(value, 0f, 100f);
-        lastDamageTime = Time.time; // Reset timer on damage
     }
 
     void Update()
     {
-        // Ensure health stays clamped every frame
         health = Mathf.Clamp(health, 0f, 100f);
 
-        if (health <= 0)
+        // Detect damage
+        if (health < lastHealth)
         {
-            Debug.Log("Player has died");
+            lastDamageTime = Time.time;
         }
 
         // Only recover if enough time has passed since last damage, health is not full, and health is above 0
@@ -31,5 +36,12 @@ public class Health : MonoBehaviour
             health += recoveryRate * Time.deltaTime;
             health = Mathf.Clamp(health, 0f, 100f);
         }
+
+        if (health <= 0)
+        {
+            Debug.Log("Player has died");
+        }
+
+        lastHealth = health;
     }
 }
