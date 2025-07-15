@@ -2,7 +2,8 @@ using UnityEngine;
 
 public class Health : MonoBehaviour
 {
-    public float health = 100f; // Default health value
+    public float maxHealth = 100f; // Maximum health, editable in Inspector
+    public float health = 100f;    // Current health, editable in Inspector
     public float recoveryRate = 10f; // Health per second
     public float recoveryDelay = 2f; // Seconds to wait before starting recovery
 
@@ -11,18 +12,20 @@ public class Health : MonoBehaviour
 
     void Start()
     {
+        // Ensure health does not exceed maxHealth at start
+        health = Mathf.Clamp(health, 0f, maxHealth);
         lastHealth = health;
     }
 
-    // Clamp health between 0 and 100
+    // Clamp health between 0 and maxHealth
     public void SetHealth(float value)
     {
-        health = Mathf.Clamp(value, 0f, 100f);
+        health = Mathf.Clamp(value, 0f, maxHealth);
     }
 
     void Update()
     {
-        health = Mathf.Clamp(health, 0f, 100f);
+        health = Mathf.Clamp(health, 0f, maxHealth);
 
         // Detect damage
         if (health < lastHealth)
@@ -31,10 +34,10 @@ public class Health : MonoBehaviour
         }
 
         // Only recover if enough time has passed since last damage, health is not full, and health is above 0
-        if (Time.time - lastDamageTime > recoveryDelay && health < 100f && health > 0f)
+        if (Time.time - lastDamageTime > recoveryDelay && health < maxHealth && health > 0f)
         {
             health += recoveryRate * Time.deltaTime;
-            health = Mathf.Clamp(health, 0f, 100f);
+            health = Mathf.Clamp(health, 0f, maxHealth);
         }
 
         if (health <= 0)

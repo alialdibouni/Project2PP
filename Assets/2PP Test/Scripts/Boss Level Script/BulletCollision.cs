@@ -40,6 +40,12 @@ public class BulletCollision : MonoBehaviour
         if (collision.gameObject.CompareTag("Enemy"))
         {
             Debug.Log("Bullet hit the enemy!");
+            BossHealth bossHealth = collision.gameObject.GetComponent<BossHealth>();
+            if (bossHealth != null)
+            {
+                bossHealth.SetHealth(bossHealth.health - bulletDamage);
+                Debug.Log("Boss health after hit: " + bossHealth.health);
+            }
             Destroy(gameObject);
             return;
         }

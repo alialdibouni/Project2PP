@@ -150,4 +150,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ignoredTags: []
-  bulletDamage: 5
+  bulletDamage: 10
