@@ -149,3 +149,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69abfda24de358f4a89671aec66b810e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ignoredTags: []
+  bulletDamage: 5

@@ -7,6 +7,7 @@ public class BulletProjectile : MonoBehaviour
     public float bulletSpeed = 20f; // Speed at which the bullet is fired
     public float reloadTime = 5f;
     public float bulletLifetime = 5f; // Time after which the bullet is destroyed
+    public float waitForSeconds = 5f; // Time to wait before starting the bullet routine
 
     private Transform playerTransform;
     private TargetPlayer targetPlayer; // Reference to TargetPlayer
@@ -26,6 +27,13 @@ public class BulletProjectile : MonoBehaviour
         // Find the TargetPlayer script in the scene
         targetPlayer = Object.FindFirstObjectByType<TargetPlayer>();
 
+        // Wait 5 seconds before starting the bullet routine
+        StartCoroutine(DelayedStart());
+    }
+
+    System.Collections.IEnumerator DelayedStart()
+    {
+        yield return new WaitForSeconds(waitForSeconds);
         StartCoroutine(SpawnBulletRoutine());
     }
 
@@ -84,7 +92,6 @@ public class BulletProjectile : MonoBehaviour
                     }
                 }
             }
-
             Destroy(bullet, bulletLifetime);
         }
     }
