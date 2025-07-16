@@ -44,7 +44,7 @@ public class BulletProjectile : MonoBehaviour
             yield return new WaitForSeconds(reloadTime);
 
             // Only shoot if the player is in view
-            if (targetPlayer != null && targetPlayer.IsPlayerInView)
+            if (targetPlayer.IsPlayerInView)
             {
                 SpawnBullet();
             }
