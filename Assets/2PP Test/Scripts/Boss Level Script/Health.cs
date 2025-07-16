@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Health : MonoBehaviour
 {
@@ -9,6 +10,8 @@ public class Health : MonoBehaviour
 
     private float lastDamageTime = -Mathf.Infinity;
     private float lastHealth;
+
+    public Image healthBar; 
 
     void Start()
     {
@@ -30,6 +33,7 @@ public class Health : MonoBehaviour
         // Detect damage
         if (health < lastHealth)
         {
+            healthBar.fillAmount = health / maxHealth;
             lastDamageTime = Time.time;
         }
 
@@ -38,6 +42,7 @@ public class Health : MonoBehaviour
         {
             health += recoveryRate * Time.deltaTime;
             health = Mathf.Clamp(health, 0f, maxHealth);
+            healthBar.fillAmount = health / maxHealth;
         }
 
         if (health <= 0)
