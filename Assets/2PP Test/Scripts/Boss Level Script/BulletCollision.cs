@@ -10,7 +10,7 @@ public class BulletCollision : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        // Ignore collision with specified tags
+        /*// Ignore collision with specified tags
         if (ignoredTags != null && ignoredTags.Length > 0)
         {
             foreach (string tag in ignoredTags)
@@ -20,7 +20,7 @@ public class BulletCollision : MonoBehaviour
                     return; // Do not destroy bullet
                 }
             }
-        }
+        }*/
 
         // Player hit logic
         if (collision.gameObject.CompareTag("Player"))
@@ -52,5 +52,16 @@ public class BulletCollision : MonoBehaviour
 
         // Destroy the bullet on any other collision
         Destroy(gameObject);
+    }
+
+    public void InitializeBullet(Transform playerTransform, GameObject bulletLocation, float bulletSpeed)
+    {
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+            Vector3 direction = (playerTransform.position - bulletLocation.transform.position).normalized;
+            rb.linearVelocity = direction * bulletSpeed;
+        }
     }
 }
