@@ -5,6 +5,7 @@ public class AIDriver : MonoBehaviour
 {
     private CarController carController;
     private Rigidbody rb;
+    private VehicleHealth vehicleHealth;
 
     [Header("Input")]
     [Tooltip("Steering input (-1 = left, 1 = right)")]
@@ -33,12 +34,22 @@ public class AIDriver : MonoBehaviour
     {
         carController = GetComponent<CarController>();
         rb = GetComponent<Rigidbody>();
+        vehicleHealth = GetComponent<VehicleHealth>();
     }
 
     void Update()
     {
         float speed = rb.linearVelocity.magnitude;
         currentSpeedMph = speed * 2.23694f;
+
+        // Stop the car if health is zero
+        if (vehicleHealth != null && vehicleHealth.currentHealth <= 0f)
+        {
+            throttle = 0f;
+            currentSpeedMph = 0f;
+            carController.inputVector = Vector2.zero;
+            return;
+        }
 
         if (!reversing)
         {
