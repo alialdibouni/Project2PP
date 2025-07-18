@@ -1,0 +1,31 @@
+using UnityEngine;
+
+public class DamageVehicle : MonoBehaviour
+{
+    private PlayerDriverInput playerInput;
+
+    // Damage multiplier: tweak as needed for gameplay balance
+    public float damageMultiplier = 2.0f;
+
+    void Awake()
+    {
+        playerInput = GetComponent<PlayerDriverInput>();
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        // Check if the collided object has VehicleHealth (AI car)
+        VehicleHealth aiHealth = collision.gameObject.GetComponent<VehicleHealth>();
+        if (aiHealth != null)
+        {
+            // Get the player's speed in MPH
+            float speed = playerInput.CurrentSpeedMph;
+
+            // Calculate damage (e.g., proportional to speed)
+            float damage = speed * damageMultiplier;
+
+            // Apply damage to AI car
+            aiHealth.SetHealth(aiHealth.currentHealth - damage);
+        }
+    }
+}

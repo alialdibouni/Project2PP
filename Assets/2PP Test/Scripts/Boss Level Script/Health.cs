@@ -19,8 +19,10 @@ public class Health : MonoBehaviour
     {
         health = Mathf.Clamp(health, 0f, maxHealth);
         lastHealth = health;
-        pauseMenu = FindObjectOfType<PauseMenu>(); // Find PauseMenu in the scene
-    }
+        pauseMenu = Object.FindFirstObjectByType<PauseMenu>(); // Find PauseMenu in the scene
+    } 
+
+    
 
     public void SetHealth(float value)
     {
