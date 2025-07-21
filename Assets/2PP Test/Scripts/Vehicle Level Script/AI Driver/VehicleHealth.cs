@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class VehicleHealth : MonoBehaviour
 {
@@ -20,12 +21,16 @@ public class VehicleHealth : MonoBehaviour
     public MeshRenderer normalCarModel;
     public GameObject destroyedCarModel;
 
+    [Header("UI")]
+    public Image healthBar;
+
     private bool isDestroyed = false;
     private bool explosionPlayed = false;
 
     public void SetHealth(float value)
     {
         currentHealth = Mathf.Clamp(value, 0f, maxHealth);
+        UpdateHealthBar();
         CheckHealthParticles();
         CheckCarModel();
     }
@@ -38,14 +43,24 @@ public class VehicleHealth : MonoBehaviour
         explosionPlayed = false;
         if (normalCarModel != null) normalCarModel.enabled = true;
         if (destroyedCarModel != null) destroyedCarModel.SetActive(false);
+        UpdateHealthBar();
     }
 
     // Update is called once per frame
     void Update()
     {
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
+        UpdateHealthBar();
         CheckHealthParticles();
         CheckCarModel();
+    }
+
+    private void UpdateHealthBar()
+    {
+        if (healthBar != null)
+        {
+            healthBar.fillAmount = currentHealth / maxHealth;
+        }
     }
 
     private void CheckHealthParticles()
