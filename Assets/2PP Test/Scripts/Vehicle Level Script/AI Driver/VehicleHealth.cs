@@ -24,8 +24,13 @@ public class VehicleHealth : MonoBehaviour
     [Header("UI")]
     public Image healthBar;
 
+    [Header("Audio")]
+    public AudioSource audioSource;
+    public AudioClip destroyedSound;
+
     private bool isDestroyed = false;
     private bool explosionPlayed = false;
+    private bool destroyedSoundPlayed = false;
 
     public void SetHealth(float value)
     {
@@ -41,6 +46,7 @@ public class VehicleHealth : MonoBehaviour
         currentHealth = Mathf.Clamp(currentHealth, 0f, maxHealth);
         isDestroyed = false;
         explosionPlayed = false;
+        destroyedSoundPlayed = false;
         if (normalCarModel != null) normalCarModel.enabled = true;
         if (destroyedCarModel != null) destroyedCarModel.SetActive(false);
         UpdateHealthBar();
@@ -108,6 +114,13 @@ public class VehicleHealth : MonoBehaviour
                 if (explosionParticle2 != null) explosionParticle2.Play();
                 explosionPlayed = true;
             }
+
+            // Play destroyed sound only once
+            if (!destroyedSoundPlayed && audioSource != null && destroyedSound != null)
+            {
+                audioSource.PlayOneShot(destroyedSound);
+                destroyedSoundPlayed = true;
+            }
         }
         else
         {
@@ -118,6 +131,7 @@ public class VehicleHealth : MonoBehaviour
             if (explosionParticle1.isPlaying) explosionParticle1.Stop();
             if (explosionParticle2.isPlaying) explosionParticle2.Stop();
             explosionPlayed = false;
+            destroyedSoundPlayed = false;
         }
     }
 

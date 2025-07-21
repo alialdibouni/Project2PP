@@ -7,6 +7,10 @@ public class DamageVehicle : MonoBehaviour
     // Damage multiplier: tweak as needed for gameplay balance
     public float damageMultiplier = 2.0f;
 
+    [Header("Collision Audio")]
+    public AudioClip[] collisionSounds;
+    public AudioSource audioSource;
+
     void Awake()
     {
         playerInput = GetComponent<PlayerDriverInput>();
@@ -26,6 +30,13 @@ public class DamageVehicle : MonoBehaviour
 
             // Apply damage to AI car
             aiHealth.SetHealth(aiHealth.currentHealth - damage);
+
+            // Play a random collision sound
+            if (collisionSounds != null && collisionSounds.Length > 0 && audioSource != null)
+            {
+                int index = Random.Range(0, collisionSounds.Length);
+                audioSource.PlayOneShot(collisionSounds[index]);
+            }
         }
     }
 }
