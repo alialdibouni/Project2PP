@@ -35,8 +35,10 @@ public class BossHealth : MonoBehaviour
             originalReloadTime = bulletProjectile.reloadTime;
         }
 
-        pauseMenu = FindObjectOfType<PauseMenu>(); // Find PauseMenu in the scene
+        pauseMenu = Object.FindFirstObjectByType<PauseMenu>(); ; // Find PauseMenu in the scene
     }
+
+    
 
     public void SetHealth(float value)
     {

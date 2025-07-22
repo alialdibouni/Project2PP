@@ -38,9 +38,9 @@ public class PauseMenuGlobal : MonoBehaviour
 
     public void Restart()
     {
-        pauseMenu.SetActive(false);
+        //pauseMenu.SetActive(false);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); // Restart the current scene
-        Time.timeScale = 1f; // Reset time scale to normal
+        //Time.timeScale = 1f; // Reset time scale to normal
     }
 
     public void ShowDeathScreen()

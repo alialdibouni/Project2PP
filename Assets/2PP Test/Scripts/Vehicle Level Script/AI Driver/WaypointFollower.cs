@@ -42,7 +42,7 @@ public class WaypointFollower : MonoBehaviour
     private int currentIndex = 0;
     private AIDriver aiDriver;
     private Rigidbody rb;
-    private bool reversing = false;
+    //private bool reversing = false;
 
     // Thresholds for reversing logic
     private const float reverseEnterAlignment = 0.0f;   // Enter reverse if facing >90° away

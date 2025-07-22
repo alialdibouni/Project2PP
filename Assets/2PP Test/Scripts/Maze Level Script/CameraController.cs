@@ -67,7 +67,7 @@ public class CameraController : MonoBehaviour
         transform.eulerAngles = new Vector3(pitch, yaw, 0f);
     }
 
-    void HandleCursorToggle()
+   /* void HandleCursorToggle()
     {
         if (Input.GetKeyDown(KeyCode.Escape))
         {
@@ -82,7 +82,7 @@ public class CameraController : MonoBehaviour
                 Cursor.visible = false;
             }
         }
-    }
+    }*/
 
     void HandleZoom()
     {
