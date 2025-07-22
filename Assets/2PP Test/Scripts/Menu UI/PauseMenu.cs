@@ -22,6 +22,20 @@ public class PauseMenu : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
     }
 
+    public void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.P))
+        { 
+            pauseMenu.SetActive(true);
+            healthBars.SetActive(false);
+            deathScreen.SetActive(false);
+            victoryScreen.SetActive(false);
+            Time.timeScale = 0f; // Pause the game by setting time scale to 0
+            //show mouse cursor
+            Cursor.lockState = CursorLockMode.None;
+        }
+    }
+
     public void Pause()
     {
         pauseMenu.SetActive(true);
