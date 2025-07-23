@@ -6,8 +6,17 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/2PP Test/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/2PP Test/Scenes/MainMenu.unity
+    guid: cc91fc2f6a2d4ab4ab9220224d0e5e6b
+  - enabled: 1
+    path: Assets/2PP Test/Scenes/2PP_MazeTest.unity
+    guid: 8de3a4c89c04b5d41bff2f97e5448182
+  - enabled: 1
+    path: Assets/2PP Test/Scenes/2PP_VehicleTest.unity
+    guid: 9cd94d278dd77434890aab6469877caf
+  - enabled: 1
+    path: Assets/2PP Test/Scenes/2PP_BossRushTest.unity
+    guid: 468622a2b3932c744b2a103243478883
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: a24d12eb1e40698449f2b0b184dee9d2, type: 3}
   m_UseUCBPForAssetBundles: 0
