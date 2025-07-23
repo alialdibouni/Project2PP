@@ -179,7 +179,7 @@ public class WaypointFollower : MonoBehaviour
             else if (speedMph > brakePointTargetSpeedMph * 0.5f)
                 aiDriver.throttle = -0.5f; // moderate brake
             else
-                aiDriver.throttle = 0f; // coasting/stop
+                aiDriver.throttle = 0.1f; // coasting/stop
 
             aiDriver.steering = Mathf.Lerp(aiDriver.steering, normalizedSteering, Time.deltaTime * steeringSmoothing);
             return;
