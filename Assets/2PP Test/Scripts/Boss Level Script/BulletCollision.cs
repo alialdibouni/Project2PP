@@ -26,11 +26,30 @@ public class BulletCollision : MonoBehaviour
         if (collision.gameObject.CompareTag("Player"))
         {
             Debug.Log("Bullet hit the player!");
+
+            // Find the boss in the scene
+            BossHealth bossHealth = FindObjectOfType<BossHealth>();
+            float damageMultiplier = 1f;
+
+            if (bossHealth != null)
+            {
+                float healthPercent = bossHealth.health / bossHealth.maxHealth;
+
+                // Increase damage as boss health decreases
+                if (healthPercent < 0.25f)
+                    damageMultiplier = 2f; // Double damage in final quarter
+                else if (healthPercent < 0.5f)
+                    damageMultiplier = 1.5f; // 1.5x damage in second quarter
+                else if (healthPercent < 0.75f)
+                    damageMultiplier = 1.25f; // 1.25x damage in third quarter
+            }
+
             Health health = collision.gameObject.GetComponent<Health>();
             if (health != null)
             {
-                health.health -= bulletDamage;
-                Debug.Log("Player health after hit: " + health.health);
+                float finalDamage = bulletDamage * damageMultiplier;
+                health.health -= finalDamage;
+                Debug.Log("Player health after hit: " + health.health + " (Damage applied: " + finalDamage + ")");
             }
             Destroy(gameObject);
             return;
@@ -43,8 +62,20 @@ public class BulletCollision : MonoBehaviour
             BossHealth bossHealth = collision.gameObject.GetComponent<BossHealth>();
             if (bossHealth != null)
             {
-                bossHealth.SetHealth(bossHealth.health - bulletDamage);
-                Debug.Log("Boss health after hit: " + bossHealth.health);
+                float damageMultiplier = 1f;
+                float healthPercent = bossHealth.health / bossHealth.maxHealth;
+
+                // Example: Increase damage as boss health decreases
+                if (healthPercent < 0.25f)
+                    damageMultiplier = 2f; // Double damage in final quarter
+                else if (healthPercent < 0.5f)
+                    damageMultiplier = 1.5f; // 1.5x damage in second quarter
+                else if (healthPercent < 0.75f)
+                    damageMultiplier = 1.25f; // 1.25x damage in third quarter
+
+                float finalDamage = bulletDamage * damageMultiplier;
+                bossHealth.SetHealth(bossHealth.health - finalDamage);
+                Debug.Log($"Boss health after hit: {bossHealth.health} (Damage applied: {finalDamage})");
             }
             Destroy(gameObject);
             return;
