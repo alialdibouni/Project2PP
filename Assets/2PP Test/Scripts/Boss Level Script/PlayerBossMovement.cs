@@ -25,11 +25,8 @@ public class PlayerBossMovement : MonoBehaviour
             rb.AddForce(Vector3.up * jumpForce, ForceMode.VelocityChange); // Apply jump force.
         }
 
-        // Toggle control scheme with Left Shift
-        if (Input.GetKeyDown(KeyCode.LeftShift))
-        {
-            isBattleMode = !isBattleMode;
-        }
+        // Hold right mouse button to enter battle mode, release to exit
+        isBattleMode = Input.GetMouseButton(1);
     }
 
     // Handle physics-based movement and rotation.

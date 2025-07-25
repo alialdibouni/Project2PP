@@ -23,8 +23,8 @@ public class FireWeapon : MonoBehaviour
         // Only allow firing in battle mode
         if (playerBossMovement != null && playerBossMovement.isBattleMode)
         {
-            // Fire when Spacebar is pressed or held, but respect reloadTime
-            if (Input.GetKey(KeyCode.Space) && Time.time - lastFireTime >= reloadTime)
+            // Fire when left mouse button is pressed or held, but respect reloadTime
+            if (Input.GetMouseButton(0) && Time.time - lastFireTime >= reloadTime)
             {
                 SpawnBullet();
                 lastFireTime = Time.time;
