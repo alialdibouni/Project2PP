@@ -18,6 +18,13 @@ public class DamageVehicle : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
+        // Play a random collision sound for any collision
+        if (collisionSounds != null && collisionSounds.Length > 0 && audioSource != null)
+        {
+            int index = Random.Range(0, collisionSounds.Length);
+            audioSource.PlayOneShot(collisionSounds[index]);
+        }
+
         // Check if the collided object has VehicleHealth (AI car)
         VehicleHealth aiHealth = collision.gameObject.GetComponent<VehicleHealth>();
         if (aiHealth != null)
@@ -30,13 +37,6 @@ public class DamageVehicle : MonoBehaviour
 
             // Apply damage to AI car
             aiHealth.SetHealth(aiHealth.currentHealth - damage);
-
-            // Play a random collision sound
-            if (collisionSounds != null && collisionSounds.Length > 0 && audioSource != null)
-            {
-                int index = Random.Range(0, collisionSounds.Length);
-                audioSource.PlayOneShot(collisionSounds[index]);
-            }
         }
     }
 }
