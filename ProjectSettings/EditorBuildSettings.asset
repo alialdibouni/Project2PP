@@ -18,5 +18,5 @@ EditorBuildSettings:
     path: Assets/2PP Test/Scenes/2PP_BossRushTest.unity
     guid: 468622a2b3932c744b2a103243478883
   m_configObjects:
-    com.unity.input.settings.actions: {fileID: -944628639613478452, guid: a24d12eb1e40698449f2b0b184dee9d2, type: 3}
+    com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 85659dedba958c944bd79e66800f537f, type: 3}
   m_UseUCBPForAssetBundles: 0
