@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 public class PlayerHealth : MonoBehaviour
 {
+    [Header("Health Bar")]
     public float health;
     private float lerpTimer;
     public float maxhealth = 100f;
@@ -9,10 +10,19 @@ public class PlayerHealth : MonoBehaviour
     public Image frontHealthBar;
     public Image backHealthBar;
 
+    [Header("Damage Overlay")]
+    public Image overlay; //damage overlay image
+    public float duration; //duration of the overlay that stays fully opaque
+    public float fadeSpeed; //speed at which the overlay fades
+
+    private float durationTimer; //timer to track the duration of the overlay
+
+
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
         health = maxhealth;
+        overlay.color = new Color(overlay.color.r, overlay.color.g, overlay.color.b, 0);
     }
 
     // Update is called once per frame
@@ -20,13 +30,18 @@ public class PlayerHealth : MonoBehaviour
     {
         health = Mathf.Clamp(health, 0, maxhealth);
         UpdateHealthUI();
-        if(Input.GetKeyDown(KeyCode.H)) 
+        if(overlay.color.a > 0) 
         {
-            TakeDamage(Random.Range(5,10));
-        }
-        if (Input.GetKeyDown(KeyCode.G))
-        {
-            RestoreHealth(Random.Range(5, 10));
+            if (health <= 30)
+                return;            
+            durationTimer += Time.deltaTime;
+            if(durationTimer > duration)
+            {
+                //fade the image
+                float tempAlpha = overlay.color.a;
+                tempAlpha -= fadeSpeed * Time.deltaTime;
+                overlay.color = new Color(overlay.color.r, overlay.color.g, overlay.color.b, tempAlpha);
+            }
         }
     }
 
@@ -60,6 +75,8 @@ public class PlayerHealth : MonoBehaviour
     {
         health -= damage;
         lerpTimer = 0f;
+        durationTimer = 0f;
+        overlay.color = new Color(overlay.color.r, overlay.color.g, overlay.color.b, 1);
     }
 
     public void RestoreHealth(float healAmount) 
