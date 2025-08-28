@@ -13,8 +13,6 @@ public class WeaponPickup : Interactable
     [SerializeField] private bool moveToIgnoreRaycastLayer = true;
     [SerializeField] private string droppedLayerName = "Interactable"; // layer to use when dropped
 
-    private static WeaponPickup currentlyEquipped;
-
     private bool equipped;
     private int originalLayer;
     private Rigidbody rb;
@@ -29,35 +27,43 @@ public class WeaponPickup : Interactable
 
     protected override void Interact()
     {
-        Transform target = attachPoint != null
-            ? attachPoint
-            : (Camera.main != null ? Camera.main.transform : null);
-
-        if (target == null)
+        Transform root = GetAttachRoot();
+        if (root == null)
         {
             Debug.LogWarning("WeaponPickup: No attach target found. Assign Attach Point or ensure a MainCamera exists.");
             return;
         }
 
-        if (currentlyEquipped == null)
+        var newWeapon = GetComponent<Weapon>();
+        if (newWeapon == null)
         {
-            EquipThis(target);
+            Debug.LogWarning("WeaponPickup: No Weapon component found on pickup.");
+            return;
         }
-        else
+
+        // If we already have a weapon in this slot under the attach root, drop it (swap same-slot).
+        var heldSameSlot = FindHeldWeaponPickupInSlot(root, newWeapon.Slot);
+        if (heldSameSlot != null && heldSameSlot != this)
         {
             Vector3 dropPos = transform.position;
             Quaternion dropRot = transform.rotation;
+            heldSameSlot.DropTo(dropPos, dropRot);
+        }
 
-            // Drop the currently held weapon at this pickup's spot
-            currentlyEquipped.DropTo(dropPos, dropRot);
+        // Equip this weapon (parent to camera/hold point)
+        EquipThis(root);
 
-            // Equip this one
-            EquipThis(target);
+        // Prefer making the newly picked weapon the active one so player can switch back if desired.
+        var shooter = FindObjectOfType<PlayerShoot>();
+        if (shooter != null)
+        {
+            shooter.SetCurrentWeapon(newWeapon);
         }
     }
 
     private void EquipThis(Transform target)
     {
+        // Stop physics from fighting the camera
         if (rb != null)
         {
             rb.isKinematic = true;
@@ -70,40 +76,47 @@ public class WeaponPickup : Interactable
             rb.angularVelocity = Vector3.zero;
         }
 
+        // Disable all colliders so it won't collide or block interaction rays
         if (cachedColliders != null)
         {
             foreach (var col in cachedColliders) col.enabled = false;
         }
 
+        // Optionally move to Ignore Raycast layer
         if (moveToIgnoreRaycastLayer)
         {
             int ignore = LayerMask.NameToLayer("Ignore Raycast");
             if (ignore >= 0) SetLayerRecursively(gameObject, ignore);
         }
 
+        // Parent to camera/attach point and set offsets
         transform.SetParent(target, false);
         transform.localPosition = localPosition;
         transform.localRotation = Quaternion.Euler(localEulerAngles);
 
+        // Notify weapon it’s now in hands (PlayerShoot may also call OnEquip, which is harmless)
         var weaponComp = GetComponent<Weapon>();
         if (weaponComp != null) weaponComp.OnEquip();
 
         equipped = true;
         promptMessage = string.Empty;
-        currentlyEquipped = this;
-        enabled = false; // prevent interacting with the held weapon
+
+        // Prevent interacting with the held weapon object
+        enabled = false;
     }
 
-    private void DropTo(Vector3 worldPosition, Quaternion worldRotation)
+    public void DropTo(Vector3 worldPosition, Quaternion worldRotation)
     {
         transform.SetParent(null, true);
         transform.SetPositionAndRotation(worldPosition, worldRotation);
 
+        // Restore colliders
         if (cachedColliders != null)
         {
             foreach (var col in cachedColliders) col.enabled = true;
         }
 
+        // Restore physics
         if (rb != null)
         {
             rb.isKinematic = false;
@@ -121,6 +134,26 @@ public class WeaponPickup : Interactable
         equipped = false;
         promptMessage = "Pick up " + gameObject.name;
         enabled = true;
+    }
+
+    private Transform GetAttachRoot()
+    {
+        if (attachPoint != null) return attachPoint;
+        return Camera.main != null ? Camera.main.transform : null;
+    }
+
+    private WeaponPickup FindHeldWeaponPickupInSlot(Transform root, WeaponSlot slot)
+    {
+        var weapons = root.GetComponentsInChildren<Weapon>(true);
+        foreach (var w in weapons)
+        {
+            if (w.Slot == slot)
+            {
+                var pickup = w.GetComponent<WeaponPickup>();
+                if (pickup != null) return pickup;
+            }
+        }
+        return null;
     }
 
     private void SetLayerRecursively(GameObject obj, int layer)

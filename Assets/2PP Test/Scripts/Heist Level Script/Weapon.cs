@@ -1,10 +1,17 @@
 using System.Collections;
 using UnityEngine;
 
+public enum WeaponSlot
+{
+    Primary,
+    Secondary
+}
+
 public abstract class Weapon : MonoBehaviour
 {
     [Header("Info")]
     [SerializeField] private string weaponName = "Weapon";
+    [SerializeField] private WeaponSlot slot = WeaponSlot.Primary; // assign in Inspector
 
     [Header("Damage / Range")]
     [SerializeField] protected float damage = 10f;
@@ -28,24 +35,26 @@ public abstract class Weapon : MonoBehaviour
     [SerializeField] protected AudioClip fireSfx;
     [SerializeField] protected AudioClip reloadSfx;
 
+    public WeaponSlot Slot => slot;
+
     public bool IsEquipped { get; private set; }
     public bool IsReloading { get; private set; }
     public string WeaponName => weaponName;
     public int AmmoInMagazine => ammoInMagazine;
     public int MagazineSize => magazineSize;
     public int ReserveAmmo => reserveAmmo;
-    public bool IsAutomatic => isAutomatic; 
+    public bool IsAutomatic => isAutomatic;
 
     private float _nextShotTime;
 
-    // Call when this weapon gets attached to hands/camera
+    // Call when this weapon becomes the active weapon in hands
     public virtual void OnEquip()
     {
         IsEquipped = true;
         gameObject.SetActive(true);
     }
 
-    // Call when this weapon is put away/dropped
+    // Call when this weapon is no longer active (switched away or dropped)
     public virtual void OnUnequip()
     {
         IsEquipped = false;
@@ -68,8 +77,8 @@ public abstract class Weapon : MonoBehaviour
         ammoInMagazine--;
         _nextShotTime = Time.time + (fireRate > 0f ? 1f / fireRate : 0f);
 
-        OnFired(); // visual/audio hook
-        PerformShot(); // implement actual hit logic or projectiles in subclass
+        OnFired();
+        PerformShot();
 
         return true;
     }
