@@ -2,6 +2,11 @@ using UnityEngine;
 
 public class PlayerLook : MonoBehaviour
 {
+    private void Start()
+    {
+        //lock cursor to center of screen and hide it
+        Cursor.lockState = CursorLockMode.Locked;
+    }
 
     public Camera cam;
     private float xRotation = 0f;
