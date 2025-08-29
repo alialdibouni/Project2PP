@@ -54,7 +54,8 @@ public class PlayerShoot : MonoBehaviour
             currentWeapon.TryReload();
         }
 
-        if (switchPressed)
+        // Block switching while reloading
+        if (switchPressed && !(currentWeapon != null && currentWeapon.IsReloading))
         {
             SwitchWeapon();
         }

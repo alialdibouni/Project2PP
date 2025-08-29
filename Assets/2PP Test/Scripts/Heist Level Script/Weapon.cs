@@ -35,6 +35,13 @@ public abstract class Weapon : MonoBehaviour
     [SerializeField] protected AudioClip fireSfx;
     [SerializeField] protected AudioClip reloadSfx;
 
+    [Header("Recoil (visual shake)")]
+    [SerializeField] private float recoilKickBack = 0.02f;   // meters backward
+    [SerializeField] private float recoilKickUp = 2.0f;      // degrees up
+    [SerializeField] private float recoilKickSide = 0.5f;    // degrees horizontal random
+    [SerializeField] private float recoilReturnSpeed = 12f;  // how fast target returns to zero
+    [SerializeField] private float recoilSnapSpeed = 20f;    // how fast current follows target
+
     public WeaponSlot Slot => slot;
 
     public bool IsEquipped { get; private set; }
@@ -47,17 +54,37 @@ public abstract class Weapon : MonoBehaviour
 
     private float _nextShotTime;
 
+    // Recoil state
+    private Vector3 _baseLocalPos;
+    private Quaternion _baseLocalRot;
+    private Vector3 _recoilPosCurrent, _recoilPosTarget;
+    private Vector3 _recoilRotCurrent, _recoilRotTarget;
+
     // Call when this weapon becomes the active weapon in hands
     public virtual void OnEquip()
     {
         IsEquipped = true;
         gameObject.SetActive(true);
+
+        // Cache current pose as base for recoil offsets
+        _baseLocalPos = transform.localPosition;
+        _baseLocalRot = transform.localRotation;
+
+        // Reset recoil state
+        _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
+        _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
+        ApplyRecoilTransform();
     }
 
     // Call when this weapon is no longer active (switched away or dropped)
     public virtual void OnUnequip()
     {
         IsEquipped = false;
+
+        // Restore transform to base pose
+        _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
+        _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
+        ApplyRecoilTransform();
     }
 
     public bool CanFire()
@@ -91,6 +118,9 @@ public abstract class Weapon : MonoBehaviour
     {
         if (muzzleFlash != null) muzzleFlash.Play();
         if (audioSource != null && fireSfx != null) audioSource.PlayOneShot(fireSfx);
+
+        // Add small recoil impulse
+        AddRecoilImpulse();
     }
 
     public bool TryReload()
@@ -126,5 +156,48 @@ public abstract class Weapon : MonoBehaviour
     public void AddReserveAmmo(int amount)
     {
         reserveAmmo = Mathf.Max(0, reserveAmmo + Mathf.Max(0, amount));
+    }
+
+    private void Update()
+    {
+        if (!IsEquipped) return;
+
+        // Targets return to zero over time
+        _recoilPosTarget = Vector3.Lerp(_recoilPosTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
+        _recoilRotTarget = Vector3.Lerp(_recoilRotTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
+
+        // Currents follow targets (snappy)
+        _recoilPosCurrent = Vector3.Lerp(_recoilPosCurrent, _recoilPosTarget, recoilSnapSpeed * Time.deltaTime);
+        _recoilRotCurrent = Vector3.Lerp(_recoilRotCurrent, _recoilRotTarget, recoilSnapSpeed * Time.deltaTime);
+
+        ApplyRecoilTransform();
+    }
+
+    private void AddRecoilImpulse()
+    {
+        if (!IsEquipped) return;
+
+        // Small position kick back
+        _recoilPosTarget += new Vector3(
+            Random.Range(-recoilKickBack, recoilKickBack) * 0.1f, // tiny lateral pos jitter
+            Random.Range(-recoilKickBack, recoilKickBack) * 0.1f,
+            -recoilKickBack);
+
+        // Small rotation kick (up + slight random horizontal)
+        _recoilRotTarget += new Vector3(
+            recoilKickUp,
+            Random.Range(-recoilKickSide, recoilKickSide),
+            0f);
+
+        // Optional clamping to avoid runaway accumulation
+        _recoilRotTarget.x = Mathf.Clamp(_recoilRotTarget.x, -10f, 15f);
+        _recoilRotTarget.y = Mathf.Clamp(_recoilRotTarget.y, -10f, 10f);
+        _recoilPosTarget.z = Mathf.Clamp(_recoilPosTarget.z, -0.1f, 0.05f);
+    }
+
+    private void ApplyRecoilTransform()
+    {
+        transform.localPosition = _baseLocalPos + _recoilPosCurrent;
+        transform.localRotation = _baseLocalRot * Quaternion.Euler(_recoilRotCurrent);
     }
 }
