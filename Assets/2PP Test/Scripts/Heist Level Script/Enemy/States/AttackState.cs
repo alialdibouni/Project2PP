@@ -44,14 +44,15 @@ public class AttackState : BaseState
                 enemy.Agent.SetDestination(enemy.transform.position + (Random.insideUnitSphere * 5f));
                 moveTimer = 0;
             }
+            enemy.LastKnownPos = enemy.Player.transform.position;
         }
-        else
+        else //lost sight of player
         { 
             losePlayerTimer += Time.deltaTime;
             if (losePlayerTimer > 8) 
             {
                 //change to search state 
-                stateMachine.ChangeState(new PatrolState());
+                stateMachine.ChangeState(new SearchState());
             }
             
                 
@@ -68,7 +69,7 @@ public class AttackState : BaseState
         //calculate direction to player
         Vector3 shootDirection = (enemy.Player.transform.position - gunBarrel.transform.position).normalized;
         //add force to rigid body
-        bullet.GetComponent<Rigidbody>().linearVelocity = Quaternion.AngleAxis(Random.Range(-5f, 5f),Vector3.up) * shootDirection * 40;
+        bullet.GetComponent<Rigidbody>().linearVelocity = Quaternion.AngleAxis(Random.Range(-3f, 3f),Vector3.up) * shootDirection * 40;
         Debug.Log("Shoot");
         shotTimer = 0;
     }
