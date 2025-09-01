@@ -3,7 +3,7 @@ using UnityEngine;
 public class WeaponPickup : Interactable
 {
     [Header("Attach target (optional)")]
-    [SerializeField] private Transform attachPoint; // If null, uses Camera.main
+    [SerializeField] private Transform attachPoint; // If null, uses WeaponCamera or Camera.main
 
     [Header("Offsets when attached")]
     [SerializeField] private Vector3 localPosition = new Vector3(0.3f, -0.25f, 0.6f);
@@ -30,7 +30,7 @@ public class WeaponPickup : Interactable
         Transform root = GetAttachRoot();
         if (root == null)
         {
-            Debug.LogWarning("WeaponPickup: No attach target found. Assign Attach Point or ensure a MainCamera exists.");
+            Debug.LogWarning("WeaponPickup: No attach target found. Ensure a 'WeaponCamera' exists, assign Attach Point, or ensure a MainCamera exists.");
             return;
         }
 
@@ -82,11 +82,18 @@ public class WeaponPickup : Interactable
             foreach (var col in cachedColliders) col.enabled = false;
         }
 
-        // Optionally move to Ignore Raycast layer
+        // Move to the equipped layer ("Weapon") so it can be used for clipping, etc.
         if (moveToIgnoreRaycastLayer)
         {
-            int ignore = LayerMask.NameToLayer("Ignore Raycast");
-            if (ignore >= 0) SetLayerRecursively(gameObject, ignore);
+            int weaponLayer = LayerMask.NameToLayer("Weapon");
+            if (weaponLayer >= 0)
+            {
+                SetLayerRecursively(gameObject, weaponLayer);
+            }
+            else
+            {
+                Debug.LogWarning("WeaponPickup: 'Weapon' layer not found. Keeping current layer.");
+            }
         }
 
         // Parent to camera/attach point and set offsets
@@ -141,6 +148,12 @@ public class WeaponPickup : Interactable
     private Transform GetAttachRoot()
     {
         if (attachPoint != null) return attachPoint;
+
+        // Prefer a specific WeaponCamera object if present
+        var weaponCam = GameObject.Find("WeaponCamera");
+        if (weaponCam != null) return weaponCam.transform;
+
+        // Fallback to Main Camera
         return Camera.main != null ? Camera.main.transform : null;
     }
 

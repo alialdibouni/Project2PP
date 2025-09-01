@@ -8,6 +8,7 @@ TagManager:
   - CameraTrigger
   - InvisibleWall
   - Enemy
+  - WeaponCamera
   layers:
   - Default
   - TransparentFX
@@ -17,7 +18,7 @@ TagManager:
   - UI
   - UICamera
   - Interactable
-  - 
+  - Weapon
   - 
   - 
   - 
