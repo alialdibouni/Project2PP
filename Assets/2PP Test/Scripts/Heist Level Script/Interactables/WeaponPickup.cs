@@ -41,7 +41,22 @@ public class WeaponPickup : Interactable
             return;
         }
 
-        // If we already have a weapon in this slot under the attach root, drop it (swap same-slot).
+        // Rule:
+        // - If holding Primary -> can pick up Primary; can only pick up Secondary if no Secondary exists yet.
+        // - If holding Secondary -> can pick up Secondary; can only pick up Primary if no Primary exists yet.
+        var current = GetCurrentlyEquippedWeapon(root);
+        if (current != null && newWeapon.Slot != current.Slot)
+        {
+            bool otherSlotAlreadyOwned = HasWeaponInSlot(root, newWeapon.Slot);
+            if (otherSlotAlreadyOwned)
+            {
+                Debug.Log($"WeaponPickup: Cannot pick up a {newWeapon.Slot} while holding a {current.Slot} (both slots present).");
+                return;
+            }
+            // else allowed because that slot is missing
+        }
+
+        // If we already have a weapon in this pickup's slot, swap it out (drop the held one)
         var heldSameSlot = FindHeldWeaponPickupInSlot(root, newWeapon.Slot);
         if (heldSameSlot != null && heldSameSlot != this)
         {
@@ -53,7 +68,7 @@ public class WeaponPickup : Interactable
         // Equip this weapon (parent to camera/hold point)
         EquipThis(root);
 
-        // Prefer making the newly picked weapon the active one so player can switch back if desired.
+        // Make the newly picked weapon the active one
         var shooter = FindObjectOfType<PlayerShoot>();
         if (shooter != null)
         {
@@ -169,6 +184,26 @@ public class WeaponPickup : Interactable
             }
         }
         return null;
+    }
+
+    private Weapon GetCurrentlyEquippedWeapon(Transform root)
+    {
+        var weapons = root.GetComponentsInChildren<Weapon>(true);
+        foreach (var w in weapons)
+        {
+            if (w.IsEquipped) return w;
+        }
+        return null;
+    }
+
+    private bool HasWeaponInSlot(Transform root, WeaponSlot slot)
+    {
+        var weapons = root.GetComponentsInChildren<Weapon>(true);
+        foreach (var w in weapons)
+        {
+            if (w.Slot == slot) return true;
+        }
+        return false;
     }
 
     private void SetLayerRecursively(GameObject obj, int layer)
