@@ -107,6 +107,11 @@ public class WeaponPickup : Interactable
 
     public void DropTo(Vector3 worldPosition, Quaternion worldRotation)
     {
+        // Notify first so it doesn't overwrite our world pose after we place it.
+        var weaponComp = GetComponent<Weapon>();
+        if (weaponComp != null) weaponComp.OnUnequip();
+
+        // Detach and place in world
         transform.SetParent(null, true);
         transform.SetPositionAndRotation(worldPosition, worldRotation);
 
@@ -127,9 +132,6 @@ public class WeaponPickup : Interactable
         int targetLayer = LayerMask.NameToLayer(droppedLayerName);
         if (targetLayer < 0) targetLayer = originalLayer;
         SetLayerRecursively(gameObject, targetLayer);
-
-        var weaponComp = GetComponent<Weapon>();
-        if (weaponComp != null) weaponComp.OnUnequip();
 
         equipped = false;
         promptMessage = "Pick up " + gameObject.name;
