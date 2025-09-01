@@ -69,7 +69,7 @@ public class WeaponPickup : Interactable
         EquipThis(root);
 
         // Make the newly picked weapon the active one
-        var shooter = FindObjectOfType<PlayerShoot>();
+        var shooter = Object.FindFirstObjectByType<PlayerShoot>();
         if (shooter != null)
         {
             shooter.SetCurrentWeapon(newWeapon);
