@@ -9,6 +9,7 @@ TagManager:
   - InvisibleWall
   - Enemy
   - WeaponCamera
+  - FPSArms
   layers:
   - Default
   - TransparentFX

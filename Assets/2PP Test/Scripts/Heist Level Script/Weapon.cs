@@ -60,6 +60,16 @@ public abstract class Weapon : MonoBehaviour
     private Vector3 _recoilPosCurrent, _recoilPosTarget;
     private Vector3 _recoilRotCurrent, _recoilRotTarget;
 
+    // FPS arms visibility cache
+    private Transform _fpsArmsRoot;
+    private Renderer[] _fpsArmsRenderers;
+
+    private void Start()
+    {
+        // Ensure FPSArms are hidden in the world by default
+        if (!IsEquipped) SetFPSArmsVisible(false);
+    }
+
     // Call when this weapon becomes the active weapon in hands
     public virtual void OnEquip()
     {
@@ -74,6 +84,9 @@ public abstract class Weapon : MonoBehaviour
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
         ApplyRecoilTransform();
+
+        // Show FPS arms for this equipped weapon
+        SetFPSArmsVisible(true);
     }
 
     // Call when this weapon is no longer active (switched away or dropped)
@@ -85,6 +98,9 @@ public abstract class Weapon : MonoBehaviour
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
         ApplyRecoilTransform();
+
+        // Hide FPS arms when not equipped
+        SetFPSArmsVisible(false);
     }
 
     public bool CanFire()
@@ -199,5 +215,36 @@ public abstract class Weapon : MonoBehaviour
     {
         transform.localPosition = _baseLocalPos + _recoilPosCurrent;
         transform.localRotation = _baseLocalRot * Quaternion.Euler(_recoilRotCurrent);
+    }
+
+    // --- FPS Arms helpers ---
+
+    private void CacheFPSArms()
+    {
+        if (_fpsArmsRoot != null) return;
+
+        // Prefer tag, fallback to name
+        var all = GetComponentsInChildren<Transform>(true);
+        foreach (var t in all)
+        {
+            if (t.CompareTag("FPSArms") || t.name == "FPSArms")
+            {
+                _fpsArmsRoot = t;
+                _fpsArmsRenderers = _fpsArmsRoot.GetComponentsInChildren<Renderer>(true);
+                break;
+            }
+        }
+    }
+
+    private void SetFPSArmsVisible(bool visible)
+    {
+        CacheFPSArms();
+        if (_fpsArmsRenderers == null) return;
+
+        for (int i = 0; i < _fpsArmsRenderers.Length; i++)
+        {
+            var r = _fpsArmsRenderers[i];
+            if (r != null) r.enabled = visible;
+        }
     }
 }
