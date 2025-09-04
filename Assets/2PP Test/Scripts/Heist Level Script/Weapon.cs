@@ -7,6 +7,7 @@ public enum WeaponSlot
     Secondary
 }
 
+[RequireComponent(typeof(AudioSource))]
 public abstract class Weapon : MonoBehaviour
 {
     [Header("Info")]
@@ -28,9 +29,9 @@ public abstract class Weapon : MonoBehaviour
     [SerializeField] protected int reserveAmmo = 90;
     [SerializeField] protected float reloadTime = 1.6f;
 
-    [Header("Visuals / Audio (optional)")]
+    [Header("Visuals / Audio")]
     [SerializeField] protected Transform muzzle;
-    [SerializeField] protected ParticleSystem muzzleFlash;
+    [SerializeField] protected ParticleSystem muzzleFlash; // Can be a prefab asset or scene object
     [SerializeField] protected AudioSource audioSource;
     [SerializeField] protected AudioClip fireSfx;
     [SerializeField] protected AudioClip reloadSfx;
@@ -64,9 +65,34 @@ public abstract class Weapon : MonoBehaviour
     private Transform _fpsArmsRoot;
     private Renderer[] _fpsArmsRenderers;
 
+    // Runtime instance of the muzzle flash we actually play
+    private ParticleSystem _muzzleFlashInstance;
+
+    private void Awake()
+    {
+        if (audioSource == null)
+            audioSource = GetComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+
+
+        CacheMuzzleAndFlash();
+        if (Application.isPlaying)
+            EnsureMuzzleFlashInstance();
+    }
+
+    private void OnValidate()
+    {
+        if (audioSource == null)
+            audioSource = GetComponent<AudioSource>();
+
+        CacheMuzzleAndFlash();
+        // Avoid instantiating in edit-time; only wire an existing child if present
+        if (!Application.isPlaying)
+            _muzzleFlashInstance = FindExistingFlashInChildren();
+    }
+
     private void Start()
     {
-        // Ensure FPSArms are hidden in the world by default
         if (!IsEquipped) SetFPSArmsVisible(false);
     }
 
@@ -76,16 +102,13 @@ public abstract class Weapon : MonoBehaviour
         IsEquipped = true;
         gameObject.SetActive(true);
 
-        // Cache current pose as base for recoil offsets
         _baseLocalPos = transform.localPosition;
         _baseLocalRot = transform.localRotation;
 
-        // Reset recoil state
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
         ApplyRecoilTransform();
 
-        // Show FPS arms for this equipped weapon
         SetFPSArmsVisible(true);
     }
 
@@ -94,12 +117,10 @@ public abstract class Weapon : MonoBehaviour
     {
         IsEquipped = false;
 
-        // Restore transform to base pose
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
         ApplyRecoilTransform();
 
-        // Hide FPS arms when not equipped
         SetFPSArmsVisible(false);
     }
 
@@ -132,10 +153,24 @@ public abstract class Weapon : MonoBehaviour
     // Optional VFX/SFX hook
     protected virtual void OnFired()
     {
-        if (muzzleFlash != null) muzzleFlash.Play();
-        if (audioSource != null && fireSfx != null) audioSource.PlayOneShot(fireSfx);
+        SafePlayMuzzleFlash();
 
-        // Add small recoil impulse
+        if (audioSource != null)
+        {
+            if (fireSfx != null)
+            {
+                audioSource.PlayOneShot(fireSfx);
+            }
+            else
+            {
+                Debug.LogWarning($"[{name}] Fire SFX not assigned on Weapon.", this);
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[{name}] AudioSource not assigned on Weapon.", this);
+        }
+
         AddRecoilImpulse();
     }
 
@@ -154,7 +189,22 @@ public abstract class Weapon : MonoBehaviour
         IsReloading = true;
         OnReloadStarted();
 
-        if (audioSource != null && reloadSfx != null) audioSource.PlayOneShot(reloadSfx);
+        if (audioSource != null)
+        {
+            if (reloadSfx != null)
+            {
+                audioSource.PlayOneShot(reloadSfx);
+            }
+            else
+            {
+                Debug.LogWarning($"[{name}] Reload SFX not assigned on Weapon.", this);
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"[{name}] AudioSource not assigned on Weapon.", this);
+        }
+
         yield return new WaitForSeconds(reloadTime);
 
         int needed = magazineSize - ammoInMagazine;
@@ -178,11 +228,9 @@ public abstract class Weapon : MonoBehaviour
     {
         if (!IsEquipped) return;
 
-        // Targets return to zero over time
         _recoilPosTarget = Vector3.Lerp(_recoilPosTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
         _recoilRotTarget = Vector3.Lerp(_recoilRotTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
 
-        // Currents follow targets (snappy)
         _recoilPosCurrent = Vector3.Lerp(_recoilPosCurrent, _recoilPosTarget, recoilSnapSpeed * Time.deltaTime);
         _recoilRotCurrent = Vector3.Lerp(_recoilRotCurrent, _recoilRotTarget, recoilSnapSpeed * Time.deltaTime);
 
@@ -193,19 +241,16 @@ public abstract class Weapon : MonoBehaviour
     {
         if (!IsEquipped) return;
 
-        // Small position kick back
         _recoilPosTarget += new Vector3(
-            Random.Range(-recoilKickBack, recoilKickBack) * 0.1f, // tiny lateral pos jitter
+            Random.Range(-recoilKickBack, recoilKickBack) * 0.1f,
             Random.Range(-recoilKickBack, recoilKickBack) * 0.1f,
             -recoilKickBack);
 
-        // Small rotation kick (up + slight random horizontal)
         _recoilRotTarget += new Vector3(
             recoilKickUp,
             Random.Range(-recoilKickSide, recoilKickSide),
             0f);
 
-        // Optional clamping to avoid runaway accumulation
         _recoilRotTarget.x = Mathf.Clamp(_recoilRotTarget.x, -10f, 15f);
         _recoilRotTarget.y = Mathf.Clamp(_recoilRotTarget.y, -10f, 10f);
         _recoilPosTarget.z = Mathf.Clamp(_recoilPosTarget.z, -0.1f, 0.05f);
@@ -223,7 +268,6 @@ public abstract class Weapon : MonoBehaviour
     {
         if (_fpsArmsRoot != null) return;
 
-        // Prefer tag, fallback to name
         var all = GetComponentsInChildren<Transform>(true);
         foreach (var t in all)
         {
@@ -246,5 +290,117 @@ public abstract class Weapon : MonoBehaviour
             var r = _fpsArmsRenderers[i];
             if (r != null) r.enabled = visible;
         }
+    }
+
+    // --- Muzzle helpers ---
+
+    private void CacheMuzzleAndFlash()
+    {
+        if (muzzle == null)
+        {
+            Transform found = null;
+            var all = GetComponentsInChildren<Transform>(true);
+            foreach (var t in all)
+            {
+                if (t.CompareTag("Muzzle") || t.name == "Muzzle" || t.name.Contains("Muzzle"))
+                {
+                    found = t;
+                    break;
+                }
+            }
+            muzzle = found;
+            if (muzzle == null && Application.isPlaying)
+                Debug.LogWarning($"[{name}] Muzzle Transform not assigned and not found by tag/name.", this);
+        }
+
+        if (muzzleFlash == null)
+        {
+            // Try find an existing ParticleSystem under muzzle
+            _muzzleFlashInstance = FindExistingFlashInChildren();
+
+            if (_muzzleFlashInstance == null)
+            {
+                // Fallback search by common names anywhere under this weapon
+                var allPs = GetComponentsInChildren<ParticleSystem>(true);
+                foreach (var ps in allPs)
+                {
+                    var n = ps.name;
+                    if (n.Contains("Muzzle") || n.Contains("Flash") || n.Contains("MuzzleFlash"))
+                    {
+                        _muzzleFlashInstance = ps;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private ParticleSystem FindExistingFlashInChildren()
+    {
+        if (muzzle == null) return null;
+        return muzzle.GetComponentInChildren<ParticleSystem>(true);
+    }
+
+    private void EnsureMuzzleFlashInstance()
+    {
+        // If we already have a valid scene instance, use it.
+        if (_muzzleFlashInstance != null && _muzzleFlashInstance.gameObject.scene.IsValid())
+            return;
+
+        // If the serialized muzzleFlash is a scene object, use it.
+        if (muzzleFlash != null && muzzleFlash.gameObject.scene.IsValid())
+        {
+            _muzzleFlashInstance = muzzleFlash;
+        }
+        // If the serialized muzzleFlash is a prefab asset, instantiate it under the muzzle at runtime.
+        else if (muzzleFlash != null && muzzle != null)
+        {
+            _muzzleFlashInstance = Instantiate(muzzleFlash, muzzle, false);
+            _muzzleFlashInstance.name = $"{muzzleFlash.name} (Instance)";
+        }
+        // If nothing assigned, try to find one in children (already attempted in CacheMuzzleAndFlash)
+        else if (_muzzleFlashInstance == null)
+        {
+            _muzzleFlashInstance = FindExistingFlashInChildren();
+        }
+
+        if (_muzzleFlashInstance != null)
+        {
+            var main = _muzzleFlashInstance.main;
+            main.playOnAwake = false;
+
+            // Ensure it's stopped and ready
+            _muzzleFlashInstance.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+        else
+        {
+            Debug.LogWarning($"[{name}] No muzzle flash ParticleSystem available. Assign a prefab or child PS.", this);
+        }
+    }
+
+    private void SafePlayMuzzleFlash()
+    {
+        if (!Application.isPlaying) return;
+
+        if (_muzzleFlashInstance == null)
+            EnsureMuzzleFlashInstance();
+
+        var ps = _muzzleFlashInstance;
+        if (ps == null)
+        {
+            Debug.LogWarning($"[{name}] Cannot play muzzle flash: ParticleSystem missing.", this);
+            return;
+        }
+
+        if (!ps.gameObject.activeInHierarchy)
+            ps.gameObject.SetActive(true);
+
+        // Keep emission enabled
+        var emission = ps.emission;
+        emission.enabled = true;
+
+        // If using Stop Action = Disable, the object stays enabled from above
+        ps.Clear(true);
+        ps.Play(true);
     }
 }
