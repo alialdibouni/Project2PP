@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 public class WeaponPickup : Interactable
 {
@@ -6,7 +6,7 @@ public class WeaponPickup : Interactable
     [SerializeField] private Transform attachPoint; // If null, uses WeaponCamera or Camera.main
 
     [Header("Offsets when attached")]
-    [SerializeField] private Vector3 localPosition = new Vector3(0.3f, -0.25f, 0.6f);
+    [SerializeField] private Vector3 localPosition; //= new Vector3(0.3f, -0.25f, 0.6f)
     [SerializeField] private Vector3 localEulerAngles = Vector3.zero;
 
     [Header("Layers")]
@@ -116,7 +116,7 @@ public class WeaponPickup : Interactable
         transform.localPosition = localPosition;
         transform.localRotation = Quaternion.Euler(localEulerAngles);
 
-        // Notify weapon it�s now in hands (PlayerShoot may also call OnEquip, which is harmless)
+        // Notify weapon it’s now in hands (PlayerShoot may also call OnEquip, which is harmless)
         var weaponComp = GetComponent<Weapon>();
         if (weaponComp != null) weaponComp.OnEquip();
 
@@ -125,6 +125,19 @@ public class WeaponPickup : Interactable
 
         // Prevent interacting with the held weapon object
         enabled = false;
+
+        // ✅ Check mission condition: do we now have BOTH a Primary and Secondary?
+        Transform root = GetAttachRoot();
+        if (root != null)
+        {
+            bool hasPrimary = HasWeaponInSlot(root, WeaponSlot.Primary);
+            bool hasSecondary = HasWeaponInSlot(root, WeaponSlot.Secondary);
+
+            if (hasPrimary && hasSecondary)
+            {
+                MissionManager.Instance?.CompleteMissionStep();
+            }
+        }
     }
 
     public void DropTo(Vector3 worldPosition, Quaternion worldRotation)
