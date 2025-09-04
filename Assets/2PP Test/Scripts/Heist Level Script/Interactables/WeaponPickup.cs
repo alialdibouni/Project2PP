@@ -41,9 +41,6 @@ public class WeaponPickup : Interactable
             return;
         }
 
-        // Rule:
-        // - If holding Primary -> can pick up Primary; can only pick up Secondary if no Secondary exists yet.
-        // - If holding Secondary -> can pick up Secondary; can only pick up Primary if no Primary exists yet.
         var current = GetCurrentlyEquippedWeapon(root);
         if (current != null && newWeapon.Slot != current.Slot)
         {
@@ -53,10 +50,8 @@ public class WeaponPickup : Interactable
                 Debug.Log($"WeaponPickup: Cannot pick up a {newWeapon.Slot} while holding a {current.Slot} (both slots present).");
                 return;
             }
-            // else allowed because that slot is missing
         }
 
-        // If we already have a weapon in this pickup's slot, swap it out (drop the held one)
         var heldSameSlot = FindHeldWeaponPickupInSlot(root, newWeapon.Slot);
         if (heldSameSlot != null && heldSameSlot != this)
         {
@@ -65,20 +60,20 @@ public class WeaponPickup : Interactable
             heldSameSlot.DropTo(dropPos, dropRot);
         }
 
-        // Equip this weapon (parent to camera/hold point)
         EquipThis(root);
 
-        // Make the newly picked weapon the active one
         var shooter = Object.FindFirstObjectByType<PlayerShoot>();
         if (shooter != null)
         {
             shooter.SetCurrentWeapon(newWeapon);
         }
+
+        // Notify mission system generically
+        MissionEventBus.RaiseWeaponEquipped(newWeapon.Slot);
     }
 
     private void EquipThis(Transform target)
     {
-        // Stop physics from fighting the camera
         if (rb != null)
         {
             rb.isKinematic = true;
@@ -91,13 +86,11 @@ public class WeaponPickup : Interactable
             rb.angularVelocity = Vector3.zero;
         }
 
-        // Disable all colliders so it won't collide or block interaction rays
         if (cachedColliders != null)
         {
             foreach (var col in cachedColliders) col.enabled = false;
         }
 
-        // Move to the equipped layer ("Weapon") so it can be used for clipping, etc.
         if (moveToIgnoreRaycastLayer)
         {
             int weaponLayer = LayerMask.NameToLayer("Weapon");
@@ -111,59 +104,38 @@ public class WeaponPickup : Interactable
             }
         }
 
-        // Parent to camera/attach point and set offsets
         transform.SetParent(target, false);
         transform.localPosition = localPosition;
         transform.localRotation = Quaternion.Euler(localEulerAngles);
 
-        // Notify weapon it’s now in hands (PlayerShoot may also call OnEquip, which is harmless)
         var weaponComp = GetComponent<Weapon>();
         if (weaponComp != null) weaponComp.OnEquip();
 
         equipped = true;
         promptMessage = string.Empty;
 
-        // Prevent interacting with the held weapon object
         enabled = false;
-
-        // ✅ Check mission condition: do we now have BOTH a Primary and Secondary?
-        Transform root = GetAttachRoot();
-        if (root != null)
-        {
-            bool hasPrimary = HasWeaponInSlot(root, WeaponSlot.Primary);
-            bool hasSecondary = HasWeaponInSlot(root, WeaponSlot.Secondary);
-
-            if (hasPrimary && hasSecondary)
-            {
-                MissionManager.Instance?.CompleteMissionStep();
-            }
-        }
     }
 
     public void DropTo(Vector3 worldPosition, Quaternion worldRotation)
     {
-        // Notify first so it doesn't overwrite our world pose after we place it.
         var weaponComp = GetComponent<Weapon>();
         if (weaponComp != null) weaponComp.OnUnequip();
 
-        // Detach and place in world
         transform.SetParent(null, true);
         transform.SetPositionAndRotation(worldPosition, worldRotation);
 
-        // Restore colliders
         if (cachedColliders != null)
         {
             foreach (var col in cachedColliders) col.enabled = true;
         }
 
-        // Restore physics
         if (rb != null)
         {
             rb.isKinematic = false;
             rb.useGravity = true;
         }
 
-        // Restore to the Interactable layer (or original if missing)
         int targetLayer = LayerMask.NameToLayer(droppedLayerName);
         if (targetLayer < 0) targetLayer = originalLayer;
         SetLayerRecursively(gameObject, targetLayer);
@@ -177,11 +149,9 @@ public class WeaponPickup : Interactable
     {
         if (attachPoint != null) return attachPoint;
 
-        // Prefer a specific WeaponCamera object if present
         var weaponCam = GameObject.Find("WeaponCamera");
         if (weaponCam != null) return weaponCam.transform;
 
-        // Fallback to Main Camera
         return Camera.main != null ? Camera.main.transform : null;
     }
 
