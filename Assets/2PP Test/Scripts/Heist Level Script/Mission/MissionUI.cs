@@ -1,18 +1,21 @@
 using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class MissionUI : MonoBehaviour
 {
-    public TextMeshProUGUI missionText;
+    [SerializeField] private TextMeshProUGUI missionText;
 
-    private void Start()
+    private void OnEnable()
     {
         if (MissionManager.Instance != null)
+        {
             MissionManager.Instance.OnMissionUpdated += UpdateMission;
+            // Force-initialize the text immediately
+            UpdateMission(MissionManager.Instance.CurrentStepDescription);
+        }
     }
 
-    private void OnDestroy()
+    private void OnDisable()
     {
         if (MissionManager.Instance != null)
             MissionManager.Instance.OnMissionUpdated -= UpdateMission;
@@ -20,6 +23,7 @@ public class MissionUI : MonoBehaviour
 
     private void UpdateMission(string newMission)
     {
-        missionText.text = newMission;
+        if (missionText != null)
+            missionText.text = newMission;
     }
 }

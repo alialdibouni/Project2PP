@@ -27,6 +27,7 @@ public abstract class Weapon : MonoBehaviour
     [SerializeField] protected int magazineSize = 30;
     [SerializeField] protected int ammoInMagazine = 30;
     [SerializeField] protected int reserveAmmo = 90;
+    [SerializeField] protected int maxReserveAmmo = 90;
     [SerializeField] protected float reloadTime = 1.6f;
 
     [Header("Visuals / Audio")]
@@ -51,6 +52,7 @@ public abstract class Weapon : MonoBehaviour
     public int AmmoInMagazine => ammoInMagazine;
     public int MagazineSize => magazineSize;
     public int ReserveAmmo => reserveAmmo;
+    public int MaxReserveAmmo => maxReserveAmmo;
     public bool IsAutomatic => isAutomatic;
 
     private float _nextShotTime;
@@ -74,6 +76,9 @@ public abstract class Weapon : MonoBehaviour
             audioSource = GetComponent<AudioSource>();
             audioSource.playOnAwake = false;
 
+        // Keep max reserve sane with existing serialized data
+        if (maxReserveAmmo < reserveAmmo) maxReserveAmmo = reserveAmmo;
+        if (maxReserveAmmo < 0) maxReserveAmmo = 0;
 
         CacheMuzzleAndFlash();
         if (Application.isPlaying)
@@ -84,6 +89,10 @@ public abstract class Weapon : MonoBehaviour
     {
         if (audioSource == null)
             audioSource = GetComponent<AudioSource>();
+
+        // Keep max reserve sane in editor too
+        if (maxReserveAmmo < reserveAmmo) maxReserveAmmo = reserveAmmo;
+        if (maxReserveAmmo < 0) maxReserveAmmo = 0;
 
         CacheMuzzleAndFlash();
         // Avoid instantiating in edit-time; only wire an existing child if present
@@ -222,6 +231,16 @@ public abstract class Weapon : MonoBehaviour
     public void AddReserveAmmo(int amount)
     {
         reserveAmmo = Mathf.Max(0, reserveAmmo + Mathf.Max(0, amount));
+        reserveAmmo = Mathf.Min(reserveAmmo, maxReserveAmmo);
+    }
+
+    // Fully refills magazine and reserve, cancels any reload in progress
+    public void RefillAllAmmo()
+    {
+        StopAllCoroutines();
+        IsReloading = false;
+        ammoInMagazine = magazineSize;
+        reserveAmmo = maxReserveAmmo;
     }
 
     private void Update()
