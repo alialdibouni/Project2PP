@@ -48,6 +48,10 @@ public class PlayerShoot : MonoBehaviour
         bool shootPressed = inputManager != null && inputManager.onFoot.Shoot.triggered;
         bool reloadPressed = inputManager != null && inputManager.onFoot.Reload.triggered;
         bool switchPressed = inputManager != null && inputManager.onFoot.SwitchWeapon.triggered;
+        bool adsHeld = inputManager != null && inputManager.onFoot.ADS != null && inputManager.onFoot.ADS.IsPressed();
+
+        // ADS
+        currentWeapon.SetAiming(adsHeld);
 
         if (reloadPressed)
         {

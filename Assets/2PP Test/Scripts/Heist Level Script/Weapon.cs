@@ -44,6 +44,18 @@ public abstract class Weapon : MonoBehaviour
     [SerializeField] private float recoilReturnSpeed = 12f;  // how fast target returns to zero
     [SerializeField] private float recoilSnapSpeed = 20f;    // how fast current follows target
 
+    [Header("Aiming (ADS)")]
+    [Tooltip("Optional transform defining the weapon pose when aiming.")]
+    [SerializeField] private Transform adsPose;
+    [Tooltip("Fallback ADS local position offset from hip if no adsPose is provided.")]
+    [SerializeField] private Vector3 adsLocalPosition = new Vector3(0f, -0.05f, 0.1f);
+    [Tooltip("Fallback ADS local rotation (Euler) from hip if no adsPose is provided.")]
+    [SerializeField] private Vector3 adsLocalEulerAngles = Vector3.zero;
+    [SerializeField, Range(0.01f, 1.5f)] private float aimInTime = 0.12f;
+    [SerializeField, Range(0.01f, 1.5f)] private float aimOutTime = 0.12f;
+    [SerializeField] private float hipFov = 60f;
+    [SerializeField] private float adsFov = 50f;
+
     public WeaponSlot Slot => slot;
 
     public bool IsEquipped { get; private set; }
@@ -63,6 +75,14 @@ public abstract class Weapon : MonoBehaviour
     private Vector3 _recoilPosCurrent, _recoilPosTarget;
     private Vector3 _recoilRotCurrent, _recoilRotTarget;
 
+    // ADS state
+    private Vector3 _hipLocalPos;
+    private Quaternion _hipLocalRot;
+    private Vector3 _adsTargetPos;
+    private Quaternion _adsTargetRot;
+    private float _aimT;           // 0..1 blend to ADS
+    private bool _aimRequested;    // set from PlayerShoot
+
     // FPS arms visibility cache
     private Transform _fpsArmsRoot;
     private Renderer[] _fpsArmsRenderers;
@@ -70,11 +90,15 @@ public abstract class Weapon : MonoBehaviour
     // Runtime instance of the muzzle flash we actually play
     private ParticleSystem _muzzleFlashInstance;
 
+    // Cameras for FOV blending
+    private Camera _mainCam;
+    private Camera _weaponCam;
+
     private void Awake()
     {
         if (audioSource == null)
             audioSource = GetComponent<AudioSource>();
-            audioSource.playOnAwake = false;
+        audioSource.playOnAwake = false;
 
         // Keep max reserve sane with existing serialized data
         if (maxReserveAmmo < reserveAmmo) maxReserveAmmo = reserveAmmo;
@@ -111,11 +135,37 @@ public abstract class Weapon : MonoBehaviour
         IsEquipped = true;
         gameObject.SetActive(true);
 
+        // Cache hip pose from current transform (set by pickup offsets)
         _baseLocalPos = transform.localPosition;
         _baseLocalRot = transform.localRotation;
+        _hipLocalPos = _baseLocalPos;
+        _hipLocalRot = _baseLocalRot;
 
+        // Resolve ADS target pose (from transform if provided, else fallback offsets)
+        if (adsPose != null)
+        {
+            _adsTargetPos = adsPose.localPosition;
+            _adsTargetRot = adsPose.localRotation;
+        }
+        else
+        {
+            _adsTargetPos = _hipLocalPos + adsLocalPosition;
+            _adsTargetRot = _hipLocalRot * Quaternion.Euler(adsLocalEulerAngles);
+        }
+
+        // Reset recoil and aiming state
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
+        _aimRequested = false;
+        _aimT = 0f;
+
+        // Cache cameras and set FOV to hip to avoid pops
+        _mainCam = Camera.main;
+        var wcGo = GameObject.Find("WeaponCamera");
+        _weaponCam = wcGo != null ? wcGo.GetComponent<Camera>() : null;
+        if (_mainCam != null) _mainCam.fieldOfView = hipFov;
+        if (_weaponCam != null) _weaponCam.fieldOfView = hipFov;
+
         ApplyRecoilTransform();
 
         SetFPSArmsVisible(true);
@@ -128,6 +178,13 @@ public abstract class Weapon : MonoBehaviour
 
         _recoilPosCurrent = _recoilPosTarget = Vector3.zero;
         _recoilRotCurrent = _recoilRotTarget = Vector3.zero;
+        _aimRequested = false; // release aim on unequip
+        _aimT = 0f;
+
+        // Reset pose/FOV back toward hip
+        if (_mainCam != null) _mainCam.fieldOfView = hipFov;
+        if (_weaponCam != null) _weaponCam.fieldOfView = hipFov;
+
         ApplyRecoilTransform();
 
         SetFPSArmsVisible(false);
@@ -247,9 +304,20 @@ public abstract class Weapon : MonoBehaviour
     {
         if (!IsEquipped) return;
 
+        // Aiming blend (time-scaled)
+        float target = _aimRequested ? 1f : 0f;
+        float speed = (_aimRequested ? 1f / Mathf.Max(aimInTime, 0.001f) : 1f / Mathf.Max(aimOutTime, 0.001f));
+        _aimT = Mathf.MoveTowards(_aimT, target, speed * Time.deltaTime);
+
+        // FOV blend
+        if (_mainCam != null) _mainCam.fieldOfView = Mathf.Lerp(hipFov, adsFov, _aimT);
+        if (_weaponCam != null) _weaponCam.fieldOfView = Mathf.Lerp(hipFov, adsFov, _aimT);
+
+        // Targets return to zero over time
         _recoilPosTarget = Vector3.Lerp(_recoilPosTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
         _recoilRotTarget = Vector3.Lerp(_recoilRotTarget, Vector3.zero, recoilReturnSpeed * Time.deltaTime);
 
+        // Currents follow targets (snappy)
         _recoilPosCurrent = Vector3.Lerp(_recoilPosCurrent, _recoilPosTarget, recoilSnapSpeed * Time.deltaTime);
         _recoilRotCurrent = Vector3.Lerp(_recoilRotCurrent, _recoilRotTarget, recoilSnapSpeed * Time.deltaTime);
 
@@ -277,8 +345,19 @@ public abstract class Weapon : MonoBehaviour
 
     private void ApplyRecoilTransform()
     {
-        transform.localPosition = _baseLocalPos + _recoilPosCurrent;
-        transform.localRotation = _baseLocalRot * Quaternion.Euler(_recoilRotCurrent);
+        // Blend hip -> ADS base pose, then apply recoil
+        Vector3 basePos = Vector3.Lerp(_hipLocalPos, _adsTargetPos, _aimT);
+        Quaternion baseRot = Quaternion.Slerp(_hipLocalRot, _adsTargetRot, _aimT);
+
+        transform.localPosition = basePos + _recoilPosCurrent;
+        transform.localRotation = baseRot * Quaternion.Euler(_recoilRotCurrent);
+    }
+
+    // --- ADS control from external input ---
+
+    public void SetAiming(bool aiming)
+    {
+        _aimRequested = aiming;
     }
 
     // --- FPS Arms helpers ---
