@@ -3,7 +3,8 @@ using UnityEngine.AI;
 
 public class FollowPlayer : MonoBehaviour
 {
-    public GameObject target;
+    //public GameObject target;
+    public Transform targetTransform;
     NavMeshAgent nav;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -14,6 +15,7 @@ public class FollowPlayer : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        nav.SetDestination(target.transform.position);
+        //nav.SetDestination(target.transform.position);
+        nav.SetDestination(targetTransform.position);
     }
 }
