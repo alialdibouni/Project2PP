@@ -61,7 +61,7 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         /// <param name="context">The context of the callback.</param>
         public void OnLook(InputAction.CallbackContext context)
         {
-            _mouseDelta = context.ReadValue<Vector2>();
+            //_mouseDelta = context.ReadValue<Vector2>();
         }
 
         /// <summary>
