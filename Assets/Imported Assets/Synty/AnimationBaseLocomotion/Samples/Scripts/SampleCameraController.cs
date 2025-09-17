@@ -85,7 +85,12 @@ namespace Synty.AnimationBaseLocomotion.Samples
             transform.position = _playerTarget.position;
             transform.rotation = _playerTarget.rotation;
 
-            _lastPosition = transform.position;
+            // Seed internal state to current transform so we don't snap to world X on first frame.
+            var euler = transform.eulerAngles;
+            _newAngleX = _lastAngleX = euler.x;
+            _newAngleY = _lastAngleY = euler.y;
+
+            _newPosition = _lastPosition = transform.position;
 
             _syntyCamera.localPosition = new Vector3(_cameraHorizontalOffset, _cameraHeightOffset, _cameraDistance * -1);
             _syntyCamera.localEulerAngles = new Vector3(_cameraTiltOffset, 0f, 0f);
@@ -151,64 +156,43 @@ namespace Synty.AnimationBaseLocomotion.Samples
         /// Gets the position of the camera.
         /// </summary>
         /// <returns>The position of the camera.</returns>
-        public Vector3 GetCameraPosition()
-        {
-            return _mainCamera.transform.position;
-        }
+        public Vector3 GetCameraPosition() => _mainCamera.transform.position;
 
         /// <summary>
         /// Gets the forward vector of the camera.
         /// </summary>
         /// <returns>The forward vector of the camera.</returns>
-        public Vector3 GetCameraForward()
-        {
-            return _mainCamera.transform.forward;
-        }
+        public Vector3 GetCameraForward() => _mainCamera.transform.forward;
 
         /// <summary>
         /// Gets the forward vector of the camera with the Y value zeroed.
         /// </summary>
         /// <returns>The forward vector of the camera with the Y value zeroed.</returns>
-        public Vector3 GetCameraForwardZeroedY()
-        {
-            return new Vector3(_mainCamera.transform.forward.x, 0, _mainCamera.transform.forward.z);
-        }
+        public Vector3 GetCameraForwardZeroedY() => new Vector3(_mainCamera.transform.forward.x, 0, _mainCamera.transform.forward.z);
 
         /// <summary>
         /// Gets the normalised forward vector of the camera with the Y value zeroed.
         /// </summary>
         /// <returns>The normalised forward vector of the camera with the Y value zeroed.</returns>
-        public Vector3 GetCameraForwardZeroedYNormalised()
-        {
-            return GetCameraForwardZeroedY().normalized;
-        }
+        public Vector3 GetCameraForwardZeroedYNormalised() => GetCameraForwardZeroedY().normalized;
 
 
         /// <summary>
         /// Gets the right vector of the camera with the Y value zeroed.
         /// </summary>
         /// <returns>The right vector of the camera with the Y value zeroed.</returns>
-        public Vector3 GetCameraRightZeroedY()
-        {
-            return new Vector3(_mainCamera.transform.right.x, 0, _mainCamera.transform.right.z);
-        }
+        public Vector3 GetCameraRightZeroedY() => new Vector3(_mainCamera.transform.right.x, 0, _mainCamera.transform.right.z);
 
         /// <summary>
         /// Gets the normalised right vector of the camera with the Y value zeroed.
         /// </summary>
         /// <returns>The normalised right vector of the camera with the Y value zeroed.</returns>
-        public Vector3 GetCameraRightZeroedYNormalised()
-        {
-            return GetCameraRightZeroedY().normalized;
-        }
+        public Vector3 GetCameraRightZeroedYNormalised() => GetCameraRightZeroedY().normalized;
 
         /// <summary>
         /// Gets the X value of the camera tilt.
         /// </summary>
         /// <returns>The X value of the camera tilt.</returns>
-        public float GetCameraTiltX()
-        {
-            return _mainCamera.transform.eulerAngles.x;
-        }
+        public float GetCameraTiltX() => _mainCamera.transform.eulerAngles.x;
     }
 }
