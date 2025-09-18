@@ -57,7 +57,6 @@ namespace Synty.AnimationBaseLocomotion.Samples
         private Vector3 _lastPosition;
 
         private float _newAngleX;
-
         private float _newAngleY;
         private Vector3 _newPosition;
         private float _rotationX;
@@ -85,8 +84,8 @@ namespace Synty.AnimationBaseLocomotion.Samples
             transform.position = _playerTarget.position;
             transform.rotation = _playerTarget.rotation;
 
-            // Seed internal state to current transform so we don't snap to world X on first frame.
-            var euler = transform.eulerAngles;
+            // Seed internal state to current transform so we don't snap on first frame.
+            var euler = transform.localEulerAngles;
             _newAngleX = _lastAngleX = euler.x;
             _newAngleY = _lastAngleY = euler.y;
 
@@ -103,31 +102,36 @@ namespace Synty.AnimationBaseLocomotion.Samples
             float rotationalFollowSpeed = 1 / (_rotationalCameraLag / _LAG_DELTA_TIME_ADJUSTMENT);
 
             _rotationX = _inputReader._mouseDelta.y * _cameraInversion * _mouseSensitivity;
-
             _rotationY = _inputReader._mouseDelta.x * _mouseSensitivity;
 
+            // X tilt smoothing (local-space)
             _newAngleX += _rotationX;
             _newAngleX = Mathf.Clamp(_newAngleX, _cameraTiltBounds.x, _cameraTiltBounds.y);
             _newAngleX = Mathf.Lerp(_lastAngleX, _newAngleX, rotationalFollowSpeed * Time.deltaTime);
 
-            if (_isLockedOn)
+            // Yaw handling (compute and apply in local-space)
+            if (_isLockedOn && _lockOnTarget != null && _playerTarget != null)
             {
-                Vector3 aimVector = _lockOnTarget.position - _playerTarget.position;
-                Quaternion targetRotation = Quaternion.LookRotation(aimVector);
-                targetRotation = Quaternion.Lerp(transform.rotation, targetRotation, rotationalFollowSpeed * Time.deltaTime);
-                _newAngleY = targetRotation.eulerAngles.y;
+                // Compute target yaw relative to parent so we can apply it to localEulerAngles cleanly
+                Quaternion targetWorldRot = Quaternion.LookRotation(_lockOnTarget.position - _playerTarget.position);
+                Quaternion targetLocalRot = transform.parent ? Quaternion.Inverse(transform.parent.rotation) * targetWorldRot : targetWorldRot;
+                float targetLocalYaw = targetLocalRot.eulerAngles.y;
+
+                _newAngleY = Mathf.LerpAngle(_lastAngleY, targetLocalYaw, rotationalFollowSpeed * Time.deltaTime);
             }
             else
             {
+                // Free yaw from mouse (local-space)
                 _newAngleY += _rotationY;
-                _newAngleY = Mathf.Lerp(_lastAngleY, _newAngleY, rotationalFollowSpeed * Time.deltaTime);
+                _newAngleY = Mathf.LerpAngle(_lastAngleY, _newAngleY, rotationalFollowSpeed * Time.deltaTime);
             }
 
+            // Position follow
             _newPosition = _playerTarget.position;
             _newPosition = Vector3.Lerp(_lastPosition, _newPosition, positionalFollowSpeed * Time.deltaTime);
 
             transform.position = _newPosition;
-            transform.eulerAngles = new Vector3(_newAngleX, _newAngleY, 0);
+            transform.localEulerAngles = new Vector3(_newAngleX, _newAngleY, 0f);
 
             _syntyCamera.localPosition = new Vector3(_cameraHorizontalOffset, _cameraHeightOffset, _cameraDistance * -1);
             _syntyCamera.localEulerAngles = new Vector3(_cameraTiltOffset, 0f, 0f);
@@ -140,59 +144,34 @@ namespace Synty.AnimationBaseLocomotion.Samples
         /// <summary>
         ///     Locks the camera to aim at a specified target.
         /// </summary>
-        /// <param name="enable">Whether lock on is enabled or not.</param>
-        /// <param name="newLockOnTarget">The target to lock on to.</param>
         public void LockOn(bool enable, Transform newLockOnTarget)
         {
+            bool wasLocked = _isLockedOn;
             _isLockedOn = enable;
 
             if (newLockOnTarget != null)
             {
                 _lockOnTarget = newLockOnTarget;
             }
+
+            // On unlock: snap local yaw back to 0 and seed internal yaw so smoothing won't reapply old value
+            if (wasLocked && !enable)
+            {
+                var lx = transform.localEulerAngles.x; // keep current local X tilt if any
+                transform.localEulerAngles = new Vector3(lx, 0f, 0f);
+
+                _newAngleY = 0f;
+                _lastAngleY = 0f;
+                _rotationY = 0f;
+            }
         }
 
-        /// <summary>
-        /// Gets the position of the camera.
-        /// </summary>
-        /// <returns>The position of the camera.</returns>
         public Vector3 GetCameraPosition() => _mainCamera.transform.position;
-
-        /// <summary>
-        /// Gets the forward vector of the camera.
-        /// </summary>
-        /// <returns>The forward vector of the camera.</returns>
         public Vector3 GetCameraForward() => _mainCamera.transform.forward;
-
-        /// <summary>
-        /// Gets the forward vector of the camera with the Y value zeroed.
-        /// </summary>
-        /// <returns>The forward vector of the camera with the Y value zeroed.</returns>
         public Vector3 GetCameraForwardZeroedY() => new Vector3(_mainCamera.transform.forward.x, 0, _mainCamera.transform.forward.z);
-
-        /// <summary>
-        /// Gets the normalised forward vector of the camera with the Y value zeroed.
-        /// </summary>
-        /// <returns>The normalised forward vector of the camera with the Y value zeroed.</returns>
         public Vector3 GetCameraForwardZeroedYNormalised() => GetCameraForwardZeroedY().normalized;
-
-
-        /// <summary>
-        /// Gets the right vector of the camera with the Y value zeroed.
-        /// </summary>
-        /// <returns>The right vector of the camera with the Y value zeroed.</returns>
         public Vector3 GetCameraRightZeroedY() => new Vector3(_mainCamera.transform.right.x, 0, _mainCamera.transform.right.z);
-
-        /// <summary>
-        /// Gets the normalised right vector of the camera with the Y value zeroed.
-        /// </summary>
-        /// <returns>The normalised right vector of the camera with the Y value zeroed.</returns>
         public Vector3 GetCameraRightZeroedYNormalised() => GetCameraRightZeroedY().normalized;
-
-        /// <summary>
-        /// Gets the X value of the camera tilt.
-        /// </summary>
-        /// <returns>The X value of the camera tilt.</returns>
         public float GetCameraTiltX() => _mainCamera.transform.eulerAngles.x;
     }
 }
