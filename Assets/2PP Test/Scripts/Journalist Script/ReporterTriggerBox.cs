@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.AI;
 using Synty.AnimationBaseLocomotion.Samples.InputSystem; // InputReader + generated Controls
 using System.Reflection;
 
@@ -21,6 +22,14 @@ public class ReporterTriggerBox : MonoBehaviour
     private Transform _originalLookAtTarget;
     private Transform _cameraManTransform;
     private Vector3 _cameraManOriginalPos;
+    private NavMeshAgent _cameraManAgent;
+
+    // If CameraMan has a follower script, disable it during B-roll to avoid destination being overwritten
+    private FollowPlayer _cameraManFollower;
+    private bool _cameraManFollowerWasEnabled;
+
+    // Cache original stopping distance to restore after B-Roll
+    private float _cameraManOriginalStoppingDistance = -1f;
 
     private void Awake()
     {
@@ -56,10 +65,8 @@ public class ReporterTriggerBox : MonoBehaviour
         var reader = other.GetComponentInParent<InputReader>();
         if (reader == null || reader != _playerInputReader) return;
 
-        // Revert any active B-Roll
         if (_bRollActive) RevertBRoll();
 
-        // Clear suppression + inversion
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
 
@@ -74,13 +81,11 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         if (!_playerInside || _playerInputReader == null) return;
 
-        // If reporter mode turned off while B-Roll active, revert immediately
         if (_bRollActive && !IsReaderLockedOn(_playerInputReader))
         {
             RevertBRoll();
         }
 
-        // Toggle B-Roll with B while locked-on inside the trigger
         if (IsReaderLockedOn(_playerInputReader)
             && Keyboard.current != null
             && Keyboard.current.bKey.wasPressedThisFrame)
@@ -93,42 +98,36 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         if (!_playerInside || _playerInputReader == null) return;
 
-        // Take control of lock-on this frame to avoid double toggles
         _playerInputReader.SuppressLockOnToggle = true;
 
         if (_playerInputReader.enabled)
         {
-            // ENTER REPORTER MODE:
-            // Ensure lock-on is ON, then disable input to freeze movement
+            // ENTER REPORTER MODE
             if (!IsReaderLockedOn(_playerInputReader))
             {
                 _playerInputReader.onLockOnToggled?.Invoke();
                 _playerInputReader.onSprintDeactivated?.Invoke();
             }
-
             _playerInputReader.enabled = false;
             _pendingUnlockOnReenable = true;
         }
         else
         {
-            // EXIT REPORTER MODE:
+            // EXIT REPORTER MODE
             _playerInputReader.enabled = true;
 
-            // Ensure lock-on is OFF
             if (IsReaderLockedOn(_playerInputReader))
             {
                 _playerInputReader.onLockOnToggled?.Invoke();
                 _playerInputReader.onSprintDeactivated?.Invoke();
             }
 
-            // Revert B-Roll and stop inversion
             if (_bRollActive) RevertBRoll();
             ResetInputReaderInversionState(_playerInputReader);
 
             _pendingUnlockOnReenable = false;
         }
 
-        // Release suppression after we handled this click
         _playerInputReader.SuppressLockOnToggle = false;
     }
 
@@ -161,6 +160,18 @@ public class ReporterTriggerBox : MonoBehaviour
                 return;
             }
             _cameraManTransform = camManGO.transform;
+            _cameraManAgent = _cameraManTransform.GetComponent<NavMeshAgent>();
+            _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
+        }
+        else
+        {
+            if (_cameraManAgent == null) _cameraManAgent = _cameraManTransform.GetComponent<NavMeshAgent>();
+            if (_cameraManFollower == null) _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
+        }
+
+        if (_cameraManAgent != null && _cameraManOriginalStoppingDistance < 0f)
+        {
+            _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
         }
 
         if (_followPlayerCamera == null)
@@ -176,8 +187,17 @@ public class ReporterTriggerBox : MonoBehaviour
         _originalLookAtTarget = GetFollowCameraTarget(_followPlayerCamera);
         _cameraManOriginalPos = _cameraManTransform.position;
 
+        // Disable follower that might overwrite destination each frame
+        if (_cameraManFollower != null)
+        {
+            _cameraManFollowerWasEnabled = _cameraManFollower.enabled;
+            _cameraManFollower.enabled = false;
+        }
+
         SetFollowCameraTarget(_followPlayerCamera, _bRollLookAt);
-        _cameraManTransform.position = _bRollCameraPosition.position;
+
+        // Move CameraMan via NavMesh with stoppingDistance = 0 to reach exact BRoll position
+        MoveCameraManTo(_bRollCameraPosition.position, 0f);
 
         _bRollActive = true;
     }
@@ -188,11 +208,49 @@ public class ReporterTriggerBox : MonoBehaviour
         {
             SetFollowCameraTarget(_followPlayerCamera, _originalLookAtTarget);
         }
-        if (_cameraManTransform != null)
+
+        // If there was a follower, restore it (and stopping distance) after clearing any agent path.
+        if (_cameraManFollower != null)
         {
-            _cameraManTransform.position = _cameraManOriginalPos;
+            if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh)
+            {
+                _cameraManAgent.ResetPath();
+                if (_cameraManOriginalStoppingDistance >= 0f)
+                    _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+            }
+            _cameraManFollower.enabled = _cameraManFollowerWasEnabled;
         }
+        else
+        {
+            // Drive back to original position; restore original stopping distance for the move if known
+            float stop = _cameraManOriginalStoppingDistance >= 0f ? _cameraManOriginalStoppingDistance : 0f;
+            MoveCameraManTo(_cameraManOriginalPos, stop);
+        }
+
         _bRollActive = false;
+    }
+
+    private void MoveCameraManTo(Vector3 destination, float stoppingDistance)
+    {
+        if (_cameraManTransform == null) return;
+
+        if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh)
+        {
+            // Snap destination to a nearby navmesh point to ensure it’s reachable
+            if (NavMesh.SamplePosition(destination, out var hit, 2.0f, NavMesh.AllAreas))
+            {
+                destination = hit.position;
+            }
+
+            _cameraManAgent.isStopped = false;
+            _cameraManAgent.stoppingDistance = stoppingDistance; // set requested stopping distance (0 for B-Roll)
+            _cameraManAgent.SetDestination(destination);
+        }
+        else
+        {
+            // Fallback: direct set if no agent
+            _cameraManTransform.position = destination;
+        }
     }
 
     // Utilities to get/set FollowPlayerCamera target via reflection (field is private)
