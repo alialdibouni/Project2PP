@@ -38,8 +38,11 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         public Action onWalkToggled;
 
         [Header("Options")]
-        [SerializeField] private bool _invertHorizontalOnLockOn = true; // Invert A/D while locked-on
-        private bool _isLockedOnLocal; // Tracks lock-on state for input inversion
+        [SerializeField] private bool _invertHorizontalOnLockOn = true;
+        private bool _isLockedOnLocal;
+
+        // NEW: allow triggers/UI to suppress lock-on toggling
+        [NonSerialized] public bool SuppressLockOnToggle;
 
         /// <inheritdoc cref="OnEnable" />
         private void OnEnable()
@@ -170,12 +173,11 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         /// <param name="context">The context of the callback.</param>
         public void OnLockOn(InputAction.CallbackContext context)
         {
-            if (!context.performed)
-            {
-                return;
-            }
+            if (!context.performed) return;
 
-            // Toggle local lock-on state for input inversion
+            // Ignore when external systems take control (e.g., ReporterTriggerBox)
+            if (SuppressLockOnToggle) return;
+
             _isLockedOnLocal = !_isLockedOnLocal;
 
             onLockOnToggled?.Invoke();
