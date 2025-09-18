@@ -37,6 +37,10 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
 
         public Action onWalkToggled;
 
+        [Header("Options")]
+        [SerializeField] private bool _invertHorizontalOnLockOn = true; // Invert A/D while locked-on
+        private bool _isLockedOnLocal; // Tracks lock-on state for input inversion
+
         /// <inheritdoc cref="OnEnable" />
         private void OnEnable()
         {
@@ -61,7 +65,8 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         /// <param name="context">The context of the callback.</param>
         public void OnLook(InputAction.CallbackContext context)
         {
-            //_mouseDelta = context.ReadValue<Vector2>();
+            // Mouse look disabled:
+            // _mouseDelta = context.ReadValue<Vector2>();
         }
 
         /// <summary>
@@ -70,7 +75,15 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         /// <param name="context">The context of the callback.</param>
         public void OnMove(InputAction.CallbackContext context)
         {
-            _moveComposite = context.ReadValue<Vector2>();
+            Vector2 value = context.ReadValue<Vector2>();
+
+            // Invert horizontal when locked on (so A/D are flipped)
+            if (_invertHorizontalOnLockOn && _isLockedOnLocal)
+            {
+                value.x = -value.x;
+            }
+
+            _moveComposite = value;
             _movementInputDetected = _moveComposite.magnitude > 0;
         }
 
@@ -161,6 +174,9 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
             {
                 return;
             }
+
+            // Toggle local lock-on state for input inversion
+            _isLockedOnLocal = !_isLockedOnLocal;
 
             onLockOnToggled?.Invoke();
             onSprintDeactivated?.Invoke();
