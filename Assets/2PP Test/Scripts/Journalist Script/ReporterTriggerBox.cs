@@ -3,6 +3,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.AI;
 using Synty.AnimationBaseLocomotion.Samples.InputSystem; // InputReader + generated Controls
 using System.Reflection;
+using System.Collections;
 
 [RequireComponent(typeof(Collider))]
 public class ReporterTriggerBox : MonoBehaviour
@@ -10,6 +11,7 @@ public class ReporterTriggerBox : MonoBehaviour
     [Header("B-Roll Targets")]
     [SerializeField] private Transform _bRollLookAt;         // "BRollLookAt"
     [SerializeField] private Transform _bRollCameraPosition; // "BRollCameraPosition"
+    [SerializeField] private Transform _initialCameraPosition; // NEW: where CameraMan goes on Reporter Mode enter and after B-Roll
 
     [Header("B-Roll Zoom (FOV)")]
     [SerializeField] private float _bRollMinFov = 20f;
@@ -39,14 +41,13 @@ public class ReporterTriggerBox : MonoBehaviour
     private FollowPlayerCamera _followPlayerCamera;
     private Transform _originalLookAtTarget;
     private Transform _cameraManTransform;
-    private Vector3 _cameraManOriginalPos;
     private NavMeshAgent _cameraManAgent;
 
-    // If CameraMan has a follower script, disable it during B-roll to avoid destination being overwritten
+    // If CameraMan has a follower script, disable it during Reporter Mode/B-Roll moves
     private FollowPlayer _cameraManFollower;
     private bool _cameraManFollowerWasEnabled;
 
-    // Cache original stopping distance to restore after B-Roll
+    // Cache original stopping distance to restore after moves
     private float _cameraManOriginalStoppingDistance = -1f;
 
     // Camera zoom cache
@@ -56,6 +57,9 @@ public class ReporterTriggerBox : MonoBehaviour
 
     // Report state
     private bool _hasReported;
+
+    // Move coroutine
+    private Coroutine _returnRoutine;
 
     private void Awake()
     {
@@ -69,14 +73,8 @@ public class ReporterTriggerBox : MonoBehaviour
             _hasReported = true;
             if (_reportArtifact != null)
             {
-                if (_destroyArtifactInstead)
-                {
-                    Destroy(_reportArtifact);
-                }
-                else
-                {
-                    _reportArtifact.SetActive(false);
-                }
+                if (_destroyArtifactInstead) Destroy(_reportArtifact);
+                else _reportArtifact.SetActive(false);
             }
         }
     }
@@ -94,7 +92,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // Cache player components
         var reader = other.GetComponentInParent<InputReader>();
         if (reader == null) return;
 
@@ -103,10 +100,7 @@ public class ReporterTriggerBox : MonoBehaviour
         _playerInside = true;
 
         // Show prompt immediately on enter (will switch to reporter prompt when locked-on)
-        if (_playerUI != null)
-        {
-            _playerUI.UpdateText(_enterPromptMessage);
-        }
+        _playerUI?.UpdateText(_enterPromptMessage);
 
         _controls.Player.Enable();
     }
@@ -118,14 +112,22 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_bRollActive) RevertBRoll();
 
+        // Safety: restore FOV on exit
+        RestoreBRollFovToDefault();
+
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
 
-        // Clear prompt on exit
-        if (_playerUI != null)
+        // Ensure the follower is re-enabled if we leave while it was disabled
+        if (EnsureCameraManRefs() && _cameraManFollower != null && !_cameraManFollower.enabled)
         {
-            _playerUI.UpdateText(string.Empty);
+            if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
+            if (_cameraManOriginalStoppingDistance >= 0f) _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+            _cameraManFollower.enabled = true; // force re-enable
         }
+
+        // Clear prompt on exit
+        _playerUI?.UpdateText(string.Empty);
 
         _playerInside = false;
         _playerInputReader = null;
@@ -191,6 +193,40 @@ public class ReporterTriggerBox : MonoBehaviour
             _playerInputReader.enabled = false;
             _pendingUnlockOnReenable = true;
 
+            // Move CameraMan to InitialCameraPosition
+            if (!EnsureCameraManRefs())
+            {
+                Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
+            }
+            else
+            {
+                if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
+                    _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
+
+                // Cache original FOV on entering Reporter Mode
+                if (_cameraManCamera != null)
+                {
+                    _cameraManOriginalFov = _cameraManCamera.fieldOfView;
+                    _cameraManFovCached = true;
+                }
+
+                // Disable follower while we position the cameraman
+                if (_cameraManFollower != null)
+                {
+                    _cameraManFollowerWasEnabled = _cameraManFollower.enabled;
+                    _cameraManFollower.enabled = false;
+                }
+
+                if (_initialCameraPosition != null)
+                {
+                    MoveCameraManTo(_initialCameraPosition.position, 0f);
+                }
+                else
+                {
+                    Debug.LogWarning("[ReporterTriggerBox] _initialCameraPosition is not assigned.");
+                }
+            }
+
             // Mark reported once and hide/destroy the artifact
             MarkReported();
         }
@@ -206,8 +242,17 @@ public class ReporterTriggerBox : MonoBehaviour
             }
 
             if (_bRollActive) RevertBRoll();
-            ResetInputReaderInversionState(_playerInputReader);
+            else RestoreBRollFovToDefault();
 
+            // Re-enable follower on exit (force enable)
+            if (EnsureCameraManRefs() && _cameraManFollower != null)
+            {
+                if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
+                if (_cameraManOriginalStoppingDistance >= 0f) _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+                _cameraManFollower.enabled = true;
+            }
+
+            ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
         }
 
@@ -222,14 +267,8 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_reportArtifact != null)
         {
-            if (_destroyArtifactInstead)
-            {
-                Destroy(_reportArtifact);
-            }
-            else
-            {
-                _reportArtifact.SetActive(false);
-            }
+            if (_destroyArtifactInstead) Destroy(_reportArtifact);
+            else _reportArtifact.SetActive(false);
         }
 
         if (!string.IsNullOrEmpty(_reportSaveKey))
@@ -259,30 +298,10 @@ public class ReporterTriggerBox : MonoBehaviour
             return;
         }
 
-        if (_cameraManTransform == null)
-        {
-            var camManGO = GameObject.FindGameObjectWithTag("CameraMan");
-            if (camManGO == null)
-            {
-                Debug.LogWarning("[ReporterTriggerBox] No GameObject with tag 'CameraMan' found.");
-                return;
-            }
-            _cameraManTransform = camManGO.transform;
-            _cameraManAgent = _cameraManTransform.GetComponent<NavMeshAgent>();
-            _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
-            _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
-        }
-        else
-        {
-            if (_cameraManAgent == null) _cameraManAgent = _cameraManTransform.GetComponent<NavMeshAgent>();
-            if (_cameraManFollower == null) _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
-            if (_cameraManCamera == null) _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
-        }
+        if (!EnsureCameraManRefs()) return;
 
-        if (_cameraManAgent != null && _cameraManOriginalStoppingDistance < 0f)
-        {
+        if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
             _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
-        }
 
         if (_followPlayerCamera == null)
         {
@@ -295,14 +314,6 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         _originalLookAtTarget = GetFollowCameraTarget(_followPlayerCamera);
-        _cameraManOriginalPos = _cameraManTransform.position;
-
-        // Cache original FOV once per session
-        if (_cameraManCamera != null && !_cameraManFovCached)
-        {
-            _cameraManOriginalFov = _cameraManCamera.fieldOfView;
-            _cameraManFovCached = true;
-        }
 
         // Disable follower that might overwrite destination each frame
         if (_cameraManFollower != null)
@@ -327,30 +338,96 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         // Restore original FOV
-        if (_cameraManCamera != null && _cameraManFovCached)
-        {
-            _cameraManCamera.fieldOfView = _cameraManOriginalFov;
-        }
+        RestoreBRollFovToDefault();
 
-        // If there was a follower, restore it (and stopping distance) after clearing any agent path.
-        if (_cameraManFollower != null)
+        if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
         {
-            if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh)
+            // Stop any previous routine
+            if (_returnRoutine != null)
             {
-                _cameraManAgent.ResetPath();
-                if (_cameraManOriginalStoppingDistance >= 0f)
-                    _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+                StopCoroutine(_returnRoutine);
+                _returnRoutine = null;
             }
-            _cameraManFollower.enabled = _cameraManFollowerWasEnabled;
+
+            // Keep follower disabled until we are back to initial position
+            if (_cameraManFollower != null)
+            {
+                _returnRoutine = StartCoroutine(ReturnCameraManToInitialThenRestoreFollower());
+            }
+            else
+            {
+                float stop = _cameraManOriginalStoppingDistance >= 0f ? _cameraManOriginalStoppingDistance : 0f;
+                MoveCameraManTo(_initialCameraPosition.position, stop);
+            }
         }
         else
         {
-            // Drive back to original position; restore original stopping distance for the move if known
-            float stop = _cameraManOriginalStoppingDistance >= 0f ? _cameraManOriginalStoppingDistance : 0f;
-            MoveCameraManTo(_cameraManOriginalPos, stop);
+            // Fallback if no agent or no initial position
+            if (_cameraManTransform != null && _initialCameraPosition != null)
+            {
+                _cameraManTransform.position = _initialCameraPosition.position;
+            }
+
+            if (_cameraManFollower != null)
+            {
+                _cameraManFollower.enabled = true; // force re-enable
+            }
         }
 
         _bRollActive = false;
+    }
+
+    private void RestoreBRollFovToDefault()
+    {
+        if (_cameraManCamera == null && _cameraManTransform != null)
+        {
+            _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
+        }
+
+        if (_cameraManCamera != null)
+        {
+            if (_cameraManFovCached)
+            {
+                _cameraManCamera.fieldOfView = _cameraManOriginalFov;
+            }
+            else
+            {
+                _cameraManCamera.fieldOfView = Mathf.Clamp(_cameraManCamera.fieldOfView, _bRollMinFov, _bRollMaxFov);
+            }
+        }
+
+        _cameraManFovCached = false;
+    }
+
+    private IEnumerator ReturnCameraManToInitialThenRestoreFollower()
+    {
+        MoveCameraManTo(_initialCameraPosition.position, 0.05f);
+
+        while (_cameraManAgent != null && _cameraManAgent.isOnNavMesh)
+        {
+            if (!_cameraManAgent.pathPending)
+            {
+                if (_cameraManAgent.remainingDistance <= Mathf.Max(_cameraManAgent.stoppingDistance, 0.05f))
+                {
+                    break;
+                }
+            }
+            yield return null;
+        }
+
+        if (_cameraManOriginalStoppingDistance >= 0f)
+        {
+            _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+        }
+
+        _cameraManAgent.ResetPath();
+
+        if (_cameraManFollower != null)
+        {
+            _cameraManFollower.enabled = true; // force re-enable
+        }
+
+        _returnRoutine = null;
     }
 
     private void MoveCameraManTo(Vector3 destination, float stoppingDistance)
@@ -366,7 +443,7 @@ public class ReporterTriggerBox : MonoBehaviour
             }
 
             _cameraManAgent.isStopped = false;
-            _cameraManAgent.stoppingDistance = stoppingDistance; // set requested stopping distance (0 for B-Roll)
+            _cameraManAgent.stoppingDistance = stoppingDistance;
             _cameraManAgent.SetDestination(destination);
         }
         else
@@ -374,6 +451,20 @@ public class ReporterTriggerBox : MonoBehaviour
             // Fallback: direct set if no agent
             _cameraManTransform.position = destination;
         }
+    }
+
+    private bool EnsureCameraManRefs()
+    {
+        if (_cameraManTransform == null)
+        {
+            var camManGO = GameObject.FindGameObjectWithTag("CameraMan");
+            if (camManGO == null) return false;
+            _cameraManTransform = camManGO.transform;
+        }
+        if (_cameraManAgent == null) _cameraManAgent = _cameraManTransform.GetComponent<NavMeshAgent>();
+        if (_cameraManFollower == null) _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
+        if (_cameraManCamera == null) _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
+        return true;
     }
 
     // Utilities to get/set FollowPlayerCamera target via reflection (field is private)
