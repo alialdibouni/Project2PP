@@ -11,7 +11,11 @@ public class ReporterTriggerBox : MonoBehaviour
     [Header("B-Roll Targets")]
     [SerializeField] private Transform _bRollLookAt;         // "BRollLookAt"
     [SerializeField] private Transform _bRollCameraPosition; // "BRollCameraPosition"
-    [SerializeField] private Transform _initialCameraPosition; // NEW: where CameraMan goes on Reporter Mode enter and after B-Roll
+    [SerializeField] private Transform _initialCameraPosition;
+
+    [Header("Recording Requirements (seconds)")]
+    [SerializeField] private float _requiredReporterSeconds = 10f;
+    [SerializeField] private float _requiredBRollSeconds = 5f;
 
     [Header("B-Roll Zoom (FOV)")]
     [SerializeField] private float _bRollMinFov = 20f;
@@ -19,21 +23,20 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _bRollZoomStep = 2.0f; // FOV change per scroll notch (~120 units)
 
     [Header("UI Prompt")]
-    [TextArea]
-    [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
-    [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
+    [TextArea] [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
+    [TextArea] [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
 
-    [Header("On Report (Disable once when Reporter Mode is activated)")]
-    [SerializeField] private GameObject _reportArtifact;     // Assign the GameObject to disable/hide
-    [SerializeField] private bool _destroyArtifactInstead = false; // If true, Destroy instead of SetActive(false)
-    [SerializeField] private string _reportSaveKey = "";     // Optional: set a unique key to persist across sessions (PlayerPrefs)
+    [Header("On Report (Disable when both recordings complete)")]
+    [SerializeField] private GameObject _reportArtifact;     // Assign the GameObject to hide/show
+    [SerializeField] private bool _destroyArtifactInstead = false; // Destroys when complete (can't be shown again)
+    [SerializeField] private string _reportSaveKey = "";     // Base key for persistence
 
     private Controls _controls;
     private InputReader _playerInputReader;
     private bool _playerInside;
     private bool _pendingUnlockOnReenable;
 
-    // Reference to player's UI to show prompt
+    // Player UI
     private PlayerUI _playerUI;
 
     // B-Roll runtime state
@@ -47,7 +50,7 @@ public class ReporterTriggerBox : MonoBehaviour
     private FollowPlayer _cameraManFollower;
     private bool _cameraManFollowerWasEnabled;
 
-    // Cache original stopping distance to restore after moves
+    // Agent tuning persistence
     private float _cameraManOriginalStoppingDistance = -1f;
 
     // Camera zoom cache
@@ -55,11 +58,18 @@ public class ReporterTriggerBox : MonoBehaviour
     private float _cameraManOriginalFov;
     private bool _cameraManFovCached;
 
-    // Report state
-    private bool _hasReported;
+    // Progress
+    private float _accumReporterSeconds;
+    private float _accumBRollSeconds;
+
+    // Completion state
+    private bool _bothComplete;
 
     // Move coroutine
     private Coroutine _returnRoutine;
+
+    private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
+    private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
 
     private void Awake()
     {
@@ -67,16 +77,11 @@ public class ReporterTriggerBox : MonoBehaviour
         col.isTrigger = true;
         _controls = new Controls();
 
-        // If persistence enabled, hide artifact at startup if already reported
-        if (!string.IsNullOrEmpty(_reportSaveKey) && PlayerPrefs.GetInt(_reportSaveKey, 0) == 1)
-        {
-            _hasReported = true;
-            if (_reportArtifact != null)
-            {
-                if (_destroyArtifactInstead) Destroy(_reportArtifact);
-                else _reportArtifact.SetActive(false);
-            }
-        }
+        // Load persisted progress
+        LoadProgress();
+
+        // Apply artifact visibility based on completion
+        EvaluateReportArtifactVisibility();
     }
 
     private void OnEnable()
@@ -88,6 +93,8 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         _controls.Player.LockOn.performed -= OnLockOnPerformed;
         _controls.Player.Disable();
+
+        SaveProgress();
     }
 
     private void OnTriggerEnter(Collider other)
@@ -99,10 +106,11 @@ public class ReporterTriggerBox : MonoBehaviour
         _playerUI = other.GetComponentInParent<PlayerUI>();
         _playerInside = true;
 
-        // Show prompt immediately on enter (will switch to reporter prompt when locked-on)
         _playerUI?.UpdateText(_enterPromptMessage);
-
         _controls.Player.Enable();
+
+        // Ensure artifact respects current progress state right away on enter
+        EvaluateReportArtifactVisibility();
     }
 
     private void OnTriggerExit(Collider other)
@@ -118,15 +126,19 @@ public class ReporterTriggerBox : MonoBehaviour
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
 
-        // Ensure the follower is re-enabled if we leave while it was disabled
+        // Ensure follower enabled if disabled
         if (EnsureCameraManRefs() && _cameraManFollower != null && !_cameraManFollower.enabled)
         {
             if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
             if (_cameraManOriginalStoppingDistance >= 0f) _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
-            _cameraManFollower.enabled = true; // force re-enable
+            _cameraManFollower.enabled = true;
         }
 
-        // Clear prompt on exit
+        // Update artifact based on current progress (show if incomplete, hide/destroy if complete)
+        EvaluateReportArtifactVisibility();
+        SaveProgress();
+
+        // Clear prompt
         _playerUI?.UpdateText(string.Empty);
 
         _playerInside = false;
@@ -141,23 +153,53 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         if (!_playerInside || _playerInputReader == null) return;
 
-        // Keep the prompt visible while inside; switch text based on Reporter Mode state
+        bool inReporterMode = IsReaderLockedOn(_playerInputReader);
+
+        // Accumulate recording time while in Reporter Mode
+        if (inReporterMode && !_bothComplete)
+        {
+            if (_bRollActive)
+            {
+                _accumBRollSeconds = Mathf.Min(_requiredBRollSeconds, _accumBRollSeconds + Time.deltaTime);
+            }
+            else
+            {
+                _accumReporterSeconds = Mathf.Min(_requiredReporterSeconds, _accumReporterSeconds + Time.deltaTime);
+            }
+
+            // If newly completed, update artifact and persist
+            bool nowComplete = IsReporterComplete() && IsBRollComplete();
+            if (nowComplete != _bothComplete)
+            {
+                _bothComplete = nowComplete;
+                EvaluateReportArtifactVisibility();
+                SaveProgress();
+            }
+        }
+
+        // Prompt + counters
         if (_playerUI != null)
         {
-            bool inReporterMode = IsReaderLockedOn(_playerInputReader);
-            _playerUI.UpdateText(inReporterMode ? _reporterPromptMessage : _enterPromptMessage);
+            if (inReporterMode)
+            {
+                float repLeft = Mathf.Max(0f, _requiredReporterSeconds - _accumReporterSeconds);
+                float brLeft = Mathf.Max(0f, _requiredBRollSeconds - _accumBRollSeconds);
+                _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s");
+            }
+            else
+            {
+                _playerUI.UpdateText(_enterPromptMessage);
+            }
         }
 
         // If reporter mode turned off while B-Roll active, revert immediately
-        if (_bRollActive && !IsReaderLockedOn(_playerInputReader))
+        if (_bRollActive && !inReporterMode)
         {
             RevertBRoll();
         }
 
         // Toggle B-Roll with B while locked-on inside the trigger
-        if (IsReaderLockedOn(_playerInputReader)
-            && Keyboard.current != null
-            && Keyboard.current.bKey.wasPressedThisFrame)
+        if (inReporterMode && Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame)
         {
             ToggleBRoll();
         }
@@ -168,7 +210,6 @@ public class ReporterTriggerBox : MonoBehaviour
             float scrollY = Mouse.current.scroll.ReadValue().y; // +/-120 per notch typically
             if (Mathf.Abs(scrollY) > 0.01f)
             {
-                // Negative scrollY should zoom in (smaller FOV), positive zoom out
                 float delta = -scrollY * (_bRollZoomStep / 120f);
                 float fov = Mathf.Clamp(_cameraManCamera.fieldOfView + delta, _bRollMinFov, _bRollMaxFov);
                 _cameraManCamera.fieldOfView = fov;
@@ -194,11 +235,7 @@ public class ReporterTriggerBox : MonoBehaviour
             _pendingUnlockOnReenable = true;
 
             // Move CameraMan to InitialCameraPosition
-            if (!EnsureCameraManRefs())
-            {
-                Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
-            }
-            else
+            if (EnsureCameraManRefs())
             {
                 if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
                     _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
@@ -210,7 +247,6 @@ public class ReporterTriggerBox : MonoBehaviour
                     _cameraManFovCached = true;
                 }
 
-                // Disable follower while we position the cameraman
                 if (_cameraManFollower != null)
                 {
                     _cameraManFollowerWasEnabled = _cameraManFollower.enabled;
@@ -226,9 +262,14 @@ public class ReporterTriggerBox : MonoBehaviour
                     Debug.LogWarning("[ReporterTriggerBox] _initialCameraPosition is not assigned.");
                 }
             }
+            else
+            {
+                Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
+            }
 
-            // Mark reported once and hide/destroy the artifact
-            MarkReported();
+            // Hide artifact while actively recording (regardless of completion state)
+            UpdateArtifactVisibility(inRecording: true);
+            SaveProgress();
         }
         else
         {
@@ -244,7 +285,7 @@ public class ReporterTriggerBox : MonoBehaviour
             if (_bRollActive) RevertBRoll();
             else RestoreBRollFovToDefault();
 
-            // Re-enable follower on exit (force enable)
+            // Re-enable follower on exit
             if (EnsureCameraManRefs() && _cameraManFollower != null)
             {
                 if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
@@ -254,28 +295,13 @@ public class ReporterTriggerBox : MonoBehaviour
 
             ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
+
+            // After a recording session ends, update artifact based on progress
+            EvaluateReportArtifactVisibility();
+            SaveProgress();
         }
 
         _playerInputReader.SuppressLockOnToggle = false;
-    }
-
-    private void MarkReported()
-    {
-        if (_hasReported) return;
-
-        _hasReported = true;
-
-        if (_reportArtifact != null)
-        {
-            if (_destroyArtifactInstead) Destroy(_reportArtifact);
-            else _reportArtifact.SetActive(false);
-        }
-
-        if (!string.IsNullOrEmpty(_reportSaveKey))
-        {
-            PlayerPrefs.SetInt(_reportSaveKey, 1);
-            PlayerPrefs.Save();
-        }
     }
 
     private void ToggleBRoll()
@@ -315,7 +341,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
         _originalLookAtTarget = GetFollowCameraTarget(_followPlayerCamera);
 
-        // Disable follower that might overwrite destination each frame
         if (_cameraManFollower != null)
         {
             _cameraManFollowerWasEnabled = _cameraManFollower.enabled;
@@ -324,7 +349,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         SetFollowCameraTarget(_followPlayerCamera, _bRollLookAt);
 
-        // Move CameraMan via NavMesh with stoppingDistance = 0 to reach exact BRoll position
+        // Move CameraMan via NavMesh with stoppingDistance = 0 to reach exact B-Roll position
         MoveCameraManTo(_bRollCameraPosition.position, 0f);
 
         _bRollActive = true;
@@ -342,14 +367,12 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
         {
-            // Stop any previous routine
             if (_returnRoutine != null)
             {
                 StopCoroutine(_returnRoutine);
                 _returnRoutine = null;
             }
 
-            // Keep follower disabled until we are back to initial position
             if (_cameraManFollower != null)
             {
                 _returnRoutine = StartCoroutine(ReturnCameraManToInitialThenRestoreFollower());
@@ -362,7 +385,6 @@ public class ReporterTriggerBox : MonoBehaviour
         }
         else
         {
-            // Fallback if no agent or no initial position
             if (_cameraManTransform != null && _initialCameraPosition != null)
             {
                 _cameraManTransform.position = _initialCameraPosition.position;
@@ -370,11 +392,13 @@ public class ReporterTriggerBox : MonoBehaviour
 
             if (_cameraManFollower != null)
             {
-                _cameraManFollower.enabled = true; // force re-enable
+                _cameraManFollower.enabled = true;
             }
         }
 
         _bRollActive = false;
+        // On returning from B-Roll, artifact is governed by overall progress (not shown if complete)
+        EvaluateReportArtifactVisibility();
     }
 
     private void RestoreBRollFovToDefault()
@@ -424,10 +448,13 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_cameraManFollower != null)
         {
-            _cameraManFollower.enabled = true; // force re-enable
+            _cameraManFollower.enabled = true;
         }
 
         _returnRoutine = null;
+
+        // After returning to initial, artifact visibility still depends only on progress
+        EvaluateReportArtifactVisibility();
     }
 
     private void MoveCameraManTo(Vector3 destination, float stoppingDistance)
@@ -436,7 +463,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh)
         {
-            // Snap destination to a nearby navmesh point to ensure it’s reachable
             if (NavMesh.SamplePosition(destination, out var hit, 2.0f, NavMesh.AllAreas))
             {
                 destination = hit.position;
@@ -448,7 +474,6 @@ public class ReporterTriggerBox : MonoBehaviour
         }
         else
         {
-            // Fallback: direct set if no agent
             _cameraManTransform.position = destination;
         }
     }
@@ -467,7 +492,71 @@ public class ReporterTriggerBox : MonoBehaviour
         return true;
     }
 
-    // Utilities to get/set FollowPlayerCamera target via reflection (field is private)
+    // Progress helpers/persistence/artifact visibility
+    private bool IsReporterComplete() => _accumReporterSeconds >= Mathf.Max(0f, _requiredReporterSeconds - 0.0001f);
+    private bool IsBRollComplete() => _accumBRollSeconds >= Mathf.Max(0f, _requiredBRollSeconds - 0.0001f);
+
+    private void EvaluateReportArtifactVisibility()
+    {
+        _bothComplete = IsReporterComplete() && IsBRollComplete();
+        // Not in active recording when evaluating here
+        UpdateArtifactVisibility(inRecording: false);
+
+        // Persist completion bit if key provided
+        if (!string.IsNullOrEmpty(_reportSaveKey))
+        {
+            PlayerPrefs.SetInt(_reportSaveKey, _bothComplete ? 1 : 0);
+        }
+    }
+
+    private void UpdateArtifactVisibility(bool inRecording)
+    {
+        if (_reportArtifact == null) return;
+
+        // If fully complete, hide permanently (or destroy if chosen)
+        if (_bothComplete)
+        {
+            if (_destroyArtifactInstead)
+            {
+                if (_reportArtifact != null) Destroy(_reportArtifact);
+            }
+            else
+            {
+                _reportArtifact.SetActive(false);
+            }
+            return;
+        }
+
+        // Otherwise, hide while actively recording; show when not recording
+        bool shouldShow = !inRecording && !_destroyArtifactInstead;
+        _reportArtifact.SetActive(shouldShow);
+    }
+
+    private void LoadProgress()
+    {
+        if (!string.IsNullOrEmpty(_reportSaveKey))
+        {
+            _accumReporterSeconds = PlayerPrefs.GetFloat(RepSecondsKey ?? string.Empty, 0f);
+            _accumBRollSeconds = PlayerPrefs.GetFloat(BRollSecondsKey ?? string.Empty, 0f);
+            _bothComplete = PlayerPrefs.GetInt(_reportSaveKey, 0) == 1;
+
+            // Clamp to current requirements in case they changed
+            _accumReporterSeconds = Mathf.Clamp(_accumReporterSeconds, 0f, _requiredReporterSeconds);
+            _accumBRollSeconds = Mathf.Clamp(_accumBRollSeconds, 0f, _requiredBRollSeconds);
+        }
+    }
+
+    private void SaveProgress()
+    {
+        if (string.IsNullOrEmpty(_reportSaveKey)) return;
+
+        PlayerPrefs.SetFloat(RepSecondsKey, _accumReporterSeconds);
+        PlayerPrefs.SetFloat(BRollSecondsKey, _accumBRollSeconds);
+        PlayerPrefs.SetInt(_reportSaveKey, (_bothComplete ? 1 : 0));
+        PlayerPrefs.Save();
+    }
+
+    // Reflection helpers
     private static Transform GetFollowCameraTarget(FollowPlayerCamera cam)
     {
         var f = typeof(FollowPlayerCamera).GetField("target", BindingFlags.Instance | BindingFlags.NonPublic);
