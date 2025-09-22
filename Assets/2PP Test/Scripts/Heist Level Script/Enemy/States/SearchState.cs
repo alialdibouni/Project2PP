@@ -12,11 +12,19 @@ public class SearchState : BaseState
 
     public override void Perform()
     {
-        if(enemy.CanSeePlayer()) //can see player
+        // Do not search outside the guard area
+        if (!enemy.IsPlayerInGuardArea)
+        {
+            stateMachine.ChangeState(new PatrolState());
+            return;
+        }
+
+        if (enemy.CanSeePlayer()) //can see player
         {
             stateMachine.ChangeState(new ChaseState());
+            return;
         }
-        if(enemy.Agent.remainingDistance < enemy.Agent.stoppingDistance) //reached last known position
+        if (enemy.Agent.remainingDistance < enemy.Agent.stoppingDistance) //reached last known position
         {
             searchTimer += Time.deltaTime;
             moveTimer += Time.deltaTime;

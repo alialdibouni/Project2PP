@@ -12,7 +12,8 @@ public class PatrolState : BaseState
     public override void Perform()
     {
         PatrolCycle();
-        if (enemy.CanSeePlayer())
+        // Only chase if the player is inside the guard area AND visible
+        if (enemy.IsPlayerInGuardArea && enemy.CanSeePlayer())
         {
             stateMachine.ChangeState(new ChaseState());
         }
@@ -31,8 +32,6 @@ public class PatrolState : BaseState
             waitTimer += Time.deltaTime;
             if (waitTimer > 3f) //wait for 2 seconds at each waypoint
             {
-
-
                 if (waypointIndex < enemy.path.waypoints.Count - 1)
                     waypointIndex++;
                 else

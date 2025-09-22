@@ -7,9 +7,12 @@ public class Enemy : MonoBehaviour
     private NavMeshAgent agent;
     private GameObject player;
     private Vector3 lastKnownPos;
+    private bool isPlayerInGuardArea;
+
     public NavMeshAgent Agent { get => agent; }
     public GameObject Player { get => player; }
     public Vector3 LastKnownPos { get => lastKnownPos; set => lastKnownPos = value; }
+    public bool IsPlayerInGuardArea { get => isPlayerInGuardArea; private set => isPlayerInGuardArea = value; }
 
     public Path path;
     public GameObject debugsphere;
@@ -43,29 +46,34 @@ public class Enemy : MonoBehaviour
 
     public bool CanSeePlayer() 
     {
-       if(player != null)
+        if (player != null)
         {
             //is the player close enough to be seen
-            if(Vector3.Distance(transform.position, player.transform.position) < sightDistance)
+            if (Vector3.Distance(transform.position, player.transform.position) < sightDistance)
             {
                 Vector3 targetDirection = player.transform.position - transform.position - (Vector3.up * eyeHeight);
                 float angleToPlayer = Vector3.Angle(targetDirection, transform.forward);
-                if(angleToPlayer >= -fieldOfView && angleToPlayer <= fieldOfView)
+                if (angleToPlayer >= -fieldOfView && angleToPlayer <= fieldOfView)
                 {
                     Ray ray = new Ray(transform.position + (Vector3.up * eyeHeight), targetDirection);
                     RaycastHit hitInfo = new RaycastHit();
-                    if(Physics.Raycast(ray, out hitInfo, sightDistance))
+                    if (Physics.Raycast(ray, out hitInfo, sightDistance))
                     {
-                        if(hitInfo.transform.gameObject == player)
+                        if (hitInfo.transform.gameObject == player)
                         {
                             Debug.DrawRay(ray.origin, ray.direction * sightDistance, Color.red);
                             return true;
                         }
                     }
-                    
                 }
             }
         }
-       return false;
+        return false;
+    }
+
+    // Called by GuardArea trigger
+    public void SetPlayerInGuardArea(bool inside)
+    {
+        IsPlayerInGuardArea = inside;
     }
 }
