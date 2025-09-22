@@ -14,7 +14,7 @@ public class SearchState : BaseState
     {
         if(enemy.CanSeePlayer()) //can see player
         {
-            stateMachine.ChangeState(new AttackState());
+            stateMachine.ChangeState(new ChaseState());
         }
         if(enemy.Agent.remainingDistance < enemy.Agent.stoppingDistance) //reached last known position
         {
