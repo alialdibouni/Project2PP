@@ -31,6 +31,13 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private bool _destroyArtifactInstead = false; // Destroys when complete (can't be shown again)
     [SerializeField] private string _reportSaveKey = "";     // Base key for persistence
 
+    [Header("Reporter Audio")]
+    [SerializeField] private AudioSource _reportAudioSource; // Optional; will be auto-created if null
+    [SerializeField] private AudioClip _reportClip;          // Your MP3 clip
+    [SerializeField] private float _reportVolume = 1f;
+    [SerializeField] private float _fadeInDuration = 0.6f;
+    [SerializeField] private float _fadeOutDuration = 0.6f;
+
     private Controls _controls;
     private InputReader _playerInputReader;
     private bool _playerInside;
@@ -68,6 +75,9 @@ public class ReporterTriggerBox : MonoBehaviour
     // Move coroutine
     private Coroutine _returnRoutine;
 
+    // Audio fade coroutine
+    private Coroutine _audioFadeRoutine;
+
     private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
     private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
 
@@ -82,6 +92,8 @@ public class ReporterTriggerBox : MonoBehaviour
 
         // Apply artifact visibility based on completion
         EvaluateReportArtifactVisibility();
+
+        EnsureAudioSource();
     }
 
     private void OnEnable()
@@ -122,6 +134,9 @@ public class ReporterTriggerBox : MonoBehaviour
 
         // Safety: restore FOV on exit
         RestoreBRollFovToDefault();
+
+        // Always stop reporter audio when leaving the trigger
+        StopReporterAudio();
 
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
@@ -269,6 +284,10 @@ public class ReporterTriggerBox : MonoBehaviour
 
             // Hide artifact while actively recording (regardless of completion state)
             UpdateArtifactVisibility(inRecording: true);
+
+            // Start reporter audio (fade in)
+            StartReporterAudio();
+
             SaveProgress();
         }
         else
@@ -292,6 +311,9 @@ public class ReporterTriggerBox : MonoBehaviour
                 if (_cameraManOriginalStoppingDistance >= 0f) _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
                 _cameraManFollower.enabled = true;
             }
+
+            // Stop reporter audio (fade out)
+            StopReporterAudio();
 
             ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
@@ -490,6 +512,90 @@ public class ReporterTriggerBox : MonoBehaviour
         if (_cameraManFollower == null) _cameraManFollower = _cameraManTransform.GetComponent<FollowPlayer>();
         if (_cameraManCamera == null) _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
         return true;
+    }
+
+    // Audio helpers
+    private void EnsureAudioSource()
+    {
+        if (_reportAudioSource == null)
+        {
+            _reportAudioSource = gameObject.GetComponent<AudioSource>();
+            if (_reportAudioSource == null) _reportAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        _reportAudioSource.playOnAwake = false;
+        _reportAudioSource.loop = true;
+        _reportAudioSource.spatialBlend = 0f; // 2D by default; set to 1 for 3D if preferred
+        _reportAudioSource.volume = 0f;
+
+        if (_reportClip != null) _reportAudioSource.clip = _reportClip;
+    }
+
+    private void StartReporterAudio()
+    {
+        if (_reportClip == null) return;
+        EnsureAudioSource();
+
+        if (_audioFadeRoutine != null)
+        {
+            StopCoroutine(_audioFadeRoutine);
+            _audioFadeRoutine = null;
+        }
+
+        if (_reportAudioSource.clip != _reportClip) _reportAudioSource.clip = _reportClip;
+        if (!_reportAudioSource.isPlaying)
+        {
+            _reportAudioSource.volume = 0f;
+            _reportAudioSource.Play();
+        }
+
+        _audioFadeRoutine = StartCoroutine(FadeAudio(_reportAudioSource, _reportAudioSource.volume, Mathf.Clamp01(_reportVolume), _fadeInDuration));
+    }
+
+    private void StopReporterAudio()
+    {
+        if (_reportAudioSource == null || !_reportAudioSource.isPlaying)
+        {
+            return;
+        }
+
+        if (_audioFadeRoutine != null)
+        {
+            StopCoroutine(_audioFadeRoutine);
+            _audioFadeRoutine = null;
+        }
+
+        _audioFadeRoutine = StartCoroutine(FadeOutAndStop(_reportAudioSource, _fadeOutDuration));
+    }
+
+    private IEnumerator FadeAudio(AudioSource src, float from, float to, float duration)
+    {
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = duration > 0f ? t / duration : 1f;
+            src.volume = Mathf.Lerp(from, to, k);
+            yield return null;
+        }
+        src.volume = to;
+        _audioFadeRoutine = null;
+    }
+
+    private IEnumerator FadeOutAndStop(AudioSource src, float duration)
+    {
+        float start = src.volume;
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = duration > 0f ? t / duration : 1f;
+            src.volume = Mathf.Lerp(start, 0f, k);
+            yield return null;
+        }
+        src.volume = 0f;
+        src.Stop();
+        _audioFadeRoutine = null;
     }
 
     // Progress helpers/persistence/artifact visibility
