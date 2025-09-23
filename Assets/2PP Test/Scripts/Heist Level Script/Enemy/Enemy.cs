@@ -16,7 +16,7 @@ public class Enemy : MonoBehaviour
     public bool IsPlayerInGuardArea { get => isPlayerInGuardArea; private set => isPlayerInGuardArea = value; }
 
     public Path path;
-    public GameObject debugsphere;
+    //public GameObject debugsphere;
     [Header("Sight Values")]
     public float sightDistance = 20f;
     public float fieldOfView = 85f;
@@ -53,7 +53,7 @@ public class Enemy : MonoBehaviour
     {
         CanSeePlayer();
         currentState = stateMachine.activeState.ToString();
-        debugsphere.transform.position = lastKnownPos;
+        //debugsphere.transform.position = lastKnownPos;
     }
 
     public bool CanSeePlayer() 
