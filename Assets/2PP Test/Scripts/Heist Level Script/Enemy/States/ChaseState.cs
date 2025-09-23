@@ -11,6 +11,9 @@ public class ChaseState : BaseState
         // Play once per chase entry
         enemy.PlayChaseAudio();
 
+        // Start chase music crossfade
+        BackgrondMusic.Instance?.BeginChase();
+
         if (enemy.Agent != null)
         {
             enemy.Agent.isStopped = false;
@@ -21,6 +24,10 @@ public class ChaseState : BaseState
     {
         // Stop any lingering audio on exit; it will not restart until the next Chase enter
         enemy.StopChaseAudio();
+
+        // Return to background music
+        BackgrondMusic.Instance?.EndChase();
+
         lostSightTimer = 0f;
     }
 
