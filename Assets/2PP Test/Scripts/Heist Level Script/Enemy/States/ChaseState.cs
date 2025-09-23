@@ -47,6 +47,11 @@ public class ChaseState : BaseState
 
             enemy.Agent.SetDestination(enemy.Player.transform.position);
             enemy.LastKnownPos = enemy.Player.transform.position;
+
+            // Keep enemy upright: look at player with Y locked to enemy's height
+            Vector3 lookPos = enemy.Player.transform.position;
+            lookPos.y = enemy.transform.position.y;
+            enemy.transform.LookAt(lookPos);
         }
         else
         {
