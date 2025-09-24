@@ -23,8 +23,8 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _bRollZoomStep = 2.0f; // FOV change per scroll notch (~120 units)
 
     [Header("UI Prompt")]
-    [TextArea] [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
-    [TextArea] [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
+    [TextArea][SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
+    [TextArea][SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
 
     [Header("On Report (Disable when both recordings complete)")]
     [SerializeField] private GameObject _reportArtifact;     // Assign the GameObject to hide/show
@@ -45,6 +45,10 @@ public class ReporterTriggerBox : MonoBehaviour
 
     // Player UI
     private PlayerUI _playerUI;
+
+    // Player Animator
+    private Animator _playerAnimator;
+    private int _isReportingHash;
 
     // B-Roll runtime state
     private bool _bRollActive;
@@ -86,6 +90,7 @@ public class ReporterTriggerBox : MonoBehaviour
         var col = GetComponent<Collider>();
         col.isTrigger = true;
         _controls = new Controls();
+        _isReportingHash = Animator.StringToHash("isReporting");
 
         // Load persisted progress
         LoadProgress();
@@ -116,6 +121,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         _playerInputReader = reader;
         _playerUI = other.GetComponentInParent<PlayerUI>();
+        _playerAnimator = other.GetComponentInParent<Animator>(); // cache player's Animator
         _playerInside = true;
 
         _playerUI?.UpdateText(_enterPromptMessage);
@@ -137,6 +143,9 @@ public class ReporterTriggerBox : MonoBehaviour
 
         // Always stop reporter audio when leaving the trigger
         StopReporterAudio();
+
+        // Ensure animator flag is reset on exit
+        SetAnimatorReporting(false);
 
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
@@ -282,6 +291,9 @@ public class ReporterTriggerBox : MonoBehaviour
                 Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
             }
 
+            // Animator: flag reporting ON
+            SetAnimatorReporting(true);
+
             // Hide artifact while actively recording (regardless of completion state)
             UpdateArtifactVisibility(inRecording: true);
 
@@ -314,6 +326,9 @@ public class ReporterTriggerBox : MonoBehaviour
 
             // Stop reporter audio (fade out)
             StopReporterAudio();
+
+            // Animator: flag reporting OFF
+            SetAnimatorReporting(false);
 
             ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
@@ -688,5 +703,13 @@ public class ReporterTriggerBox : MonoBehaviour
         {
             field.SetValue(reader, false);
         }
+    }
+
+    private bool IsInReporterMode() => _playerInputReader != null && !_playerInputReader.enabled;
+
+    private void SetAnimatorReporting(bool value)
+    {
+        if (_playerAnimator == null) return;
+        _playerAnimator.SetBool(_isReportingHash, value);
     }
 }
