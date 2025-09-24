@@ -138,8 +138,8 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_bRollActive) RevertBRoll();
 
-        // Safety: restore FOV on exit
-        RestoreBRollFovToDefault();
+        // Safety: restore FOV on exit and clear cache
+        RestoreBRollFovToDefault(clearCache: true);
 
         // Always stop reporter audio when leaving the trigger
         StopReporterAudio();
@@ -264,8 +264,8 @@ public class ReporterTriggerBox : MonoBehaviour
                 if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
                     _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
 
-                // Cache original FOV on entering Reporter Mode
-                if (_cameraManCamera != null)
+                // Cache original FOV on entering Reporter Mode (only once per session)
+                if (_cameraManCamera != null && !_cameraManFovCached)
                 {
                     _cameraManOriginalFov = _cameraManCamera.fieldOfView;
                     _cameraManFovCached = true;
@@ -314,7 +314,7 @@ public class ReporterTriggerBox : MonoBehaviour
             }
 
             if (_bRollActive) RevertBRoll();
-            else RestoreBRollFovToDefault();
+            else RestoreBRollFovToDefault(clearCache: true);
 
             // Re-enable follower on exit
             if (EnsureCameraManRefs() && _cameraManFollower != null)
@@ -399,8 +399,8 @@ public class ReporterTriggerBox : MonoBehaviour
             SetFollowCameraTarget(_followPlayerCamera, _originalLookAtTarget);
         }
 
-        // Restore original FOV
-        RestoreBRollFovToDefault();
+        // Restore original FOV for Reporter Mode (keep cache for subsequent B-Roll toggles)
+        RestoreBRollFovToDefault(clearCache: false);
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
         {
@@ -438,26 +438,22 @@ public class ReporterTriggerBox : MonoBehaviour
         EvaluateReportArtifactVisibility();
     }
 
-    private void RestoreBRollFovToDefault()
+    private void RestoreBRollFovToDefault(bool clearCache)
     {
         if (_cameraManCamera == null && _cameraManTransform != null)
         {
             _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
         }
 
-        if (_cameraManCamera != null)
+        if (_cameraManCamera != null && _cameraManFovCached)
         {
-            if (_cameraManFovCached)
-            {
-                _cameraManCamera.fieldOfView = _cameraManOriginalFov;
-            }
-            else
-            {
-                _cameraManCamera.fieldOfView = Mathf.Clamp(_cameraManCamera.fieldOfView, _bRollMinFov, _bRollMaxFov);
-            }
+            _cameraManCamera.fieldOfView = _cameraManOriginalFov;
         }
 
-        _cameraManFovCached = false;
+        if (clearCache)
+        {
+            _cameraManFovCached = false;
+        }
     }
 
     private IEnumerator ReturnCameraManToInitialThenRestoreFollower()
