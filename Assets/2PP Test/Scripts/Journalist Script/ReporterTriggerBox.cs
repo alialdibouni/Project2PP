@@ -22,6 +22,9 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _bRollMaxFov = 60f;
     [SerializeField] private float _bRollZoomStep = 2.0f; // FOV change per scroll notch (~120 units)
 
+    [Header("B-Roll Recording Gates")]
+    [Range(0f, 1f)] [SerializeField] private float _bRollZoomRequirement = 0.7f; // 70% toward min FOV
+
     [Header("UI Prompt")]
     [TextArea] [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
     [TextArea] [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
@@ -146,7 +149,9 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_bRollActive) RevertBRoll();
 
-        RestoreBRollFovToDefault();
+        // Safety: restore FOV on exit and clear cache
+        RestoreBRollFovToDefault(clearCache: true);
+
         StopReporterAudio();
 
         // reset session flags
@@ -214,7 +219,11 @@ public class ReporterTriggerBox : MonoBehaviour
         {
             if (_bRollActive)
             {
-                _accumBRollSeconds = Mathf.Min(_requiredBRollSeconds, _accumBRollSeconds + Time.deltaTime);
+                // Only count B-Roll time when zoomed-in enough
+                if (IsBRollZoomedEnough())
+                {
+                    _accumBRollSeconds = Mathf.Min(_requiredBRollSeconds, _accumBRollSeconds + Time.deltaTime);
+                }
             }
             else
             {
@@ -237,7 +246,15 @@ public class ReporterTriggerBox : MonoBehaviour
             {
                 float repLeft = Mathf.Max(0f, _requiredReporterSeconds - _accumReporterSeconds);
                 float brLeft = Mathf.Max(0f, _requiredBRollSeconds - _accumBRollSeconds);
-                _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s");
+
+                if (_bRollActive && !IsBRollZoomedEnough())
+                {
+                    _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s\nZoom in to record B-Roll");
+                }
+                else
+                {
+                    _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s");
+                }
             }
             else
             {
@@ -292,7 +309,8 @@ public class ReporterTriggerBox : MonoBehaviour
                 if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
                     _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
 
-                if (_cameraManCamera != null)
+                // Cache original FOV once per reporter session
+                if (_cameraManCamera != null && !_cameraManFovCached)
                 {
                     _cameraManOriginalFov = _cameraManCamera.fieldOfView;
                     _cameraManFovCached = true;
@@ -343,7 +361,7 @@ public class ReporterTriggerBox : MonoBehaviour
             }
 
             if (_bRollActive) RevertBRoll();
-            else RestoreBRollFovToDefault();
+            else RestoreBRollFovToDefault(clearCache: true);
 
             if (EnsureCameraManRefs() && _cameraManFollower != null)
             {
@@ -427,7 +445,8 @@ public class ReporterTriggerBox : MonoBehaviour
             SetFollowCameraTarget(_followPlayerCamera, _originalLookAtTarget);
         }
 
-        RestoreBRollFovToDefault();
+        // Restore original FOV for this reporter session (keep cache for subsequent B-Roll toggles)
+        RestoreBRollFovToDefault(clearCache: false);
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
         {
@@ -464,26 +483,22 @@ public class ReporterTriggerBox : MonoBehaviour
         EvaluateReportArtifactVisibility();
     }
 
-    private void RestoreBRollFovToDefault()
+    private void RestoreBRollFovToDefault(bool clearCache)
     {
         if (_cameraManCamera == null && _cameraManTransform != null)
         {
             _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
         }
 
-        if (_cameraManCamera != null)
+        if (_cameraManCamera != null && _cameraManFovCached)
         {
-            if (_cameraManFovCached)
-            {
-                _cameraManCamera.fieldOfView = _cameraManOriginalFov;
-            }
-            else
-            {
-                _cameraManCamera.fieldOfView = Mathf.Clamp(_cameraManCamera.fieldOfView, _bRollMinFov, _bRollMaxFov);
-            }
+            _cameraManCamera.fieldOfView = _cameraManOriginalFov;
         }
 
-        _cameraManFovCached = false;
+        if (clearCache)
+        {
+            _cameraManFovCached = false;
+        }
     }
 
     private IEnumerator ReturnCameraManToInitialThenRestoreFollower()
@@ -748,5 +763,14 @@ public class ReporterTriggerBox : MonoBehaviour
             return true;
 
         return false;
+    }
+
+    // Returns true if camera FOV is "mostly zoomed" toward min FOV based on _bRollZoomRequirement (0..1)
+    private bool IsBRollZoomedEnough()
+    {
+        if (_cameraManCamera == null) return false;
+        // Normalize: 0 = max FOV (zoomed out), 1 = min FOV (fully zoomed)
+        float zoom01 = Mathf.InverseLerp(_bRollMaxFov, _bRollMinFov, _cameraManCamera.fieldOfView);
+        return zoom01 >= _bRollZoomRequirement;
     }
 }
