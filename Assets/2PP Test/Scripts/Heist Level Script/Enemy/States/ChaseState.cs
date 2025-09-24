@@ -5,6 +5,9 @@ public class ChaseState : BaseState
     private float lostSightTimer;
     private const float LostSightTimeout = 5f;
 
+    // Remember original stopping distance so we can restore it on exit
+    private float _previousStoppingDistance;
+
     public override void Enter()
     {
         lostSightTimer = 0f;
@@ -16,6 +19,10 @@ public class ChaseState : BaseState
 
         if (enemy.Agent != null)
         {
+            // Save and set stopping distance for chase
+            _previousStoppingDistance = enemy.Agent.stoppingDistance;
+            enemy.Agent.stoppingDistance = 1.5f;
+
             enemy.Agent.isStopped = false;
         }
     }
@@ -27,6 +34,12 @@ public class ChaseState : BaseState
 
         // Return to background music
         BackgrondMusic.Instance?.EndChase();
+
+        // Restore original stopping distance
+        if (enemy.Agent != null)
+        {
+            enemy.Agent.stoppingDistance = _previousStoppingDistance;
+        }
 
         lostSightTimer = 0f;
     }
