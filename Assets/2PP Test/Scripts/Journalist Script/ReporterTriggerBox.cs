@@ -23,8 +23,8 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _bRollZoomStep = 2.0f; // FOV change per scroll notch (~120 units)
 
     [Header("UI Prompt")]
-    [TextArea][SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
-    [TextArea][SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
+    [TextArea] [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
+    [TextArea] [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
 
     [Header("On Report (Disable when both recordings complete)")]
     [SerializeField] private GameObject _reportArtifact;     // Assign the GameObject to hide/show
@@ -38,6 +38,10 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _fadeInDuration = 0.6f;
     [SerializeField] private float _fadeOutDuration = 0.6f;
 
+    [Header("Reporter Start Delay")]
+    [Tooltip("Extra delay AFTER A_A_Report animation begins, before audio/timers start.")]
+    [SerializeField] private float _reporterTimeDelay = 0.0f;
+
     private Controls _controls;
     private InputReader _playerInputReader;
     private bool _playerInside;
@@ -46,9 +50,14 @@ public class ReporterTriggerBox : MonoBehaviour
     // Player UI
     private PlayerUI _playerUI;
 
-    // Player Animator
+    // Player Animator (isReporting + report state detection)
     private Animator _playerAnimator;
-    private int _isReportingHash;
+    private int _isReportingHash = Animator.StringToHash("isReporting");
+
+    [Header("Animator Sync")]
+    [SerializeField] private string _reportStateName = "A_A_Report";
+    [SerializeField] private int _reportLayerIndex = 0;
+    private int _reportStateHash;
 
     // B-Roll runtime state
     private bool _bRollActive;
@@ -82,6 +91,11 @@ public class ReporterTriggerBox : MonoBehaviour
     // Audio fade coroutine
     private Coroutine _audioFadeRoutine;
 
+    // Animator-driven start state
+    private bool _reportAnimDetected;       // set once per session when A_A_Report begins
+    private float _reporterDelayRemaining;  // counts down after detection
+    private bool _reporterAudioStarted;     // audio started this session
+
     private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
     private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
 
@@ -90,14 +104,11 @@ public class ReporterTriggerBox : MonoBehaviour
         var col = GetComponent<Collider>();
         col.isTrigger = true;
         _controls = new Controls();
-        _isReportingHash = Animator.StringToHash("isReporting");
 
-        // Load persisted progress
+        _reportStateHash = Animator.StringToHash(_reportStateName);
+
         LoadProgress();
-
-        // Apply artifact visibility based on completion
         EvaluateReportArtifactVisibility();
-
         EnsureAudioSource();
     }
 
@@ -110,7 +121,6 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         _controls.Player.LockOn.performed -= OnLockOnPerformed;
         _controls.Player.Disable();
-
         SaveProgress();
     }
 
@@ -121,13 +131,11 @@ public class ReporterTriggerBox : MonoBehaviour
 
         _playerInputReader = reader;
         _playerUI = other.GetComponentInParent<PlayerUI>();
-        _playerAnimator = other.GetComponentInParent<Animator>(); // cache player's Animator
+        _playerAnimator = other.GetComponentInParent<Animator>();
         _playerInside = true;
 
         _playerUI?.UpdateText(_enterPromptMessage);
         _controls.Player.Enable();
-
-        // Ensure artifact respects current progress state right away on enter
         EvaluateReportArtifactVisibility();
     }
 
@@ -138,19 +146,20 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_bRollActive) RevertBRoll();
 
-        // Safety: restore FOV on exit and clear cache
-        RestoreBRollFovToDefault(clearCache: true);
-
-        // Always stop reporter audio when leaving the trigger
+        RestoreBRollFovToDefault();
         StopReporterAudio();
 
-        // Ensure animator flag is reset on exit
+        // reset session flags
+        _reportAnimDetected = false;
+        _reporterDelayRemaining = 0f;
+        _reporterAudioStarted = false;
+
+        // safety: animation flag off on leave
         SetAnimatorReporting(false);
 
         _playerInputReader.SuppressLockOnToggle = false;
         ResetInputReaderInversionState(_playerInputReader);
 
-        // Ensure follower enabled if disabled
         if (EnsureCameraManRefs() && _cameraManFollower != null && !_cameraManFollower.enabled)
         {
             if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
@@ -158,13 +167,10 @@ public class ReporterTriggerBox : MonoBehaviour
             _cameraManFollower.enabled = true;
         }
 
-        // Update artifact based on current progress (show if incomplete, hide/destroy if complete)
         EvaluateReportArtifactVisibility();
         SaveProgress();
 
-        // Clear prompt
         _playerUI?.UpdateText(string.Empty);
-
         _playerInside = false;
         _playerInputReader = null;
         _playerUI = null;
@@ -179,8 +185,32 @@ public class ReporterTriggerBox : MonoBehaviour
 
         bool inReporterMode = IsReaderLockedOn(_playerInputReader);
 
-        // Accumulate recording time while in Reporter Mode
-        if (inReporterMode && !_bothComplete)
+        // 1) Detect when A_A_Report starts (once per session)
+        if (inReporterMode && !_reportAnimDetected && DidReportAnimationStart())
+        {
+            _reportAnimDetected = true;
+            _reporterDelayRemaining = Mathf.Max(0f, _reporterTimeDelay);
+            _reporterAudioStarted = false;
+        }
+
+        // 2) After detection, honor optional delay before starting audio/timers
+        if (inReporterMode && _reportAnimDetected)
+        {
+            if (_reporterDelayRemaining > 0f)
+            {
+                _reporterDelayRemaining -= Time.deltaTime;
+                if (_reporterDelayRemaining < 0f) _reporterDelayRemaining = 0f;
+            }
+
+            if (_reporterDelayRemaining <= 0f && !_reporterAudioStarted)
+            {
+                StartReporterAudio();
+                _reporterAudioStarted = true;
+            }
+        }
+
+        // 3) Accumulate time only after animation detected and delay elapsed
+        if (inReporterMode && _reportAnimDetected && _reporterDelayRemaining <= 0f && !_bothComplete)
         {
             if (_bRollActive)
             {
@@ -191,7 +221,6 @@ public class ReporterTriggerBox : MonoBehaviour
                 _accumReporterSeconds = Mathf.Min(_requiredReporterSeconds, _accumReporterSeconds + Time.deltaTime);
             }
 
-            // If newly completed, update artifact and persist
             bool nowComplete = IsReporterComplete() && IsBRollComplete();
             if (nowComplete != _bothComplete)
             {
@@ -258,14 +287,12 @@ public class ReporterTriggerBox : MonoBehaviour
             _playerInputReader.enabled = false;
             _pendingUnlockOnReenable = true;
 
-            // Move CameraMan to InitialCameraPosition
             if (EnsureCameraManRefs())
             {
                 if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
                     _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
 
-                // Cache original FOV on entering Reporter Mode (only once per session)
-                if (_cameraManCamera != null && !_cameraManFovCached)
+                if (_cameraManCamera != null)
                 {
                     _cameraManOriginalFov = _cameraManCamera.fieldOfView;
                     _cameraManFovCached = true;
@@ -291,14 +318,16 @@ public class ReporterTriggerBox : MonoBehaviour
                 Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
             }
 
-            // Animator: flag reporting ON
+            // Reset animator-driven session flags
+            _reportAnimDetected = false;
+            _reporterDelayRemaining = 0f;
+            _reporterAudioStarted = false;
+
+            // Signal animation graph to enter reporting blend tree
             SetAnimatorReporting(true);
 
-            // Hide artifact while actively recording (regardless of completion state)
+            // Hide artifact while actively recording (kept immediate)
             UpdateArtifactVisibility(inRecording: true);
-
-            // Start reporter audio (fade in)
-            StartReporterAudio();
 
             SaveProgress();
         }
@@ -314,9 +343,8 @@ public class ReporterTriggerBox : MonoBehaviour
             }
 
             if (_bRollActive) RevertBRoll();
-            else RestoreBRollFovToDefault(clearCache: true);
+            else RestoreBRollFovToDefault();
 
-            // Re-enable follower on exit
             if (EnsureCameraManRefs() && _cameraManFollower != null)
             {
                 if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
@@ -324,16 +352,17 @@ public class ReporterTriggerBox : MonoBehaviour
                 _cameraManFollower.enabled = true;
             }
 
-            // Stop reporter audio (fade out)
             StopReporterAudio();
 
-            // Animator: flag reporting OFF
+            // Reset animator & session flags
             SetAnimatorReporting(false);
+            _reportAnimDetected = false;
+            _reporterDelayRemaining = 0f;
+            _reporterAudioStarted = false;
 
             ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
 
-            // After a recording session ends, update artifact based on progress
             EvaluateReportArtifactVisibility();
             SaveProgress();
         }
@@ -386,7 +415,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
         SetFollowCameraTarget(_followPlayerCamera, _bRollLookAt);
 
-        // Move CameraMan via NavMesh with stoppingDistance = 0 to reach exact B-Roll position
         MoveCameraManTo(_bRollCameraPosition.position, 0f);
 
         _bRollActive = true;
@@ -399,8 +427,7 @@ public class ReporterTriggerBox : MonoBehaviour
             SetFollowCameraTarget(_followPlayerCamera, _originalLookAtTarget);
         }
 
-        // Restore original FOV for Reporter Mode (keep cache for subsequent B-Roll toggles)
-        RestoreBRollFovToDefault(clearCache: false);
+        RestoreBRollFovToDefault();
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
         {
@@ -434,26 +461,29 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         _bRollActive = false;
-        // On returning from B-Roll, artifact is governed by overall progress (not shown if complete)
         EvaluateReportArtifactVisibility();
     }
 
-    private void RestoreBRollFovToDefault(bool clearCache)
+    private void RestoreBRollFovToDefault()
     {
         if (_cameraManCamera == null && _cameraManTransform != null)
         {
             _cameraManCamera = _cameraManTransform.GetComponentInChildren<Camera>(true);
         }
 
-        if (_cameraManCamera != null && _cameraManFovCached)
+        if (_cameraManCamera != null)
         {
-            _cameraManCamera.fieldOfView = _cameraManOriginalFov;
+            if (_cameraManFovCached)
+            {
+                _cameraManCamera.fieldOfView = _cameraManOriginalFov;
+            }
+            else
+            {
+                _cameraManCamera.fieldOfView = Mathf.Clamp(_cameraManCamera.fieldOfView, _bRollMinFov, _bRollMaxFov);
+            }
         }
 
-        if (clearCache)
-        {
-            _cameraManFovCached = false;
-        }
+        _cameraManFovCached = false;
     }
 
     private IEnumerator ReturnCameraManToInitialThenRestoreFollower()
@@ -485,8 +515,6 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         _returnRoutine = null;
-
-        // After returning to initial, artifact visibility still depends only on progress
         EvaluateReportArtifactVisibility();
     }
 
@@ -536,7 +564,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         _reportAudioSource.playOnAwake = false;
         _reportAudioSource.loop = true;
-        _reportAudioSource.spatialBlend = 0f; // 2D by default; set to 1 for 3D if preferred
+        _reportAudioSource.spatialBlend = 0f;
         _reportAudioSource.volume = 0f;
 
         if (_reportClip != null) _reportAudioSource.clip = _reportClip;
@@ -616,10 +644,8 @@ public class ReporterTriggerBox : MonoBehaviour
     private void EvaluateReportArtifactVisibility()
     {
         _bothComplete = IsReporterComplete() && IsBRollComplete();
-        // Not in active recording when evaluating here
         UpdateArtifactVisibility(inRecording: false);
 
-        // Persist completion bit if key provided
         if (!string.IsNullOrEmpty(_reportSaveKey))
         {
             PlayerPrefs.SetInt(_reportSaveKey, _bothComplete ? 1 : 0);
@@ -630,7 +656,6 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         if (_reportArtifact == null) return;
 
-        // If fully complete, hide permanently (or destroy if chosen)
         if (_bothComplete)
         {
             if (_destroyArtifactInstead)
@@ -644,7 +669,6 @@ public class ReporterTriggerBox : MonoBehaviour
             return;
         }
 
-        // Otherwise, hide while actively recording; show when not recording
         bool shouldShow = !inRecording && !_destroyArtifactInstead;
         _reportArtifact.SetActive(shouldShow);
     }
@@ -657,7 +681,6 @@ public class ReporterTriggerBox : MonoBehaviour
             _accumBRollSeconds = PlayerPrefs.GetFloat(BRollSecondsKey ?? string.Empty, 0f);
             _bothComplete = PlayerPrefs.GetInt(_reportSaveKey, 0) == 1;
 
-            // Clamp to current requirements in case they changed
             _accumReporterSeconds = Mathf.Clamp(_accumReporterSeconds, 0f, _requiredReporterSeconds);
             _accumBRollSeconds = Mathf.Clamp(_accumBRollSeconds, 0f, _requiredBRollSeconds);
         }
@@ -673,7 +696,6 @@ public class ReporterTriggerBox : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    // Reflection helpers
     private static Transform GetFollowCameraTarget(FollowPlayerCamera cam)
     {
         var f = typeof(FollowPlayerCamera).GetField("target", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -701,11 +723,30 @@ public class ReporterTriggerBox : MonoBehaviour
         }
     }
 
-    private bool IsInReporterMode() => _playerInputReader != null && !_playerInputReader.enabled;
-
     private void SetAnimatorReporting(bool value)
     {
         if (_playerAnimator == null) return;
         _playerAnimator.SetBool(_isReportingHash, value);
+    }
+
+    // Detects the start of the A_A_Report animation on the given layer.
+    private bool DidReportAnimationStart()
+    {
+        if (_playerAnimator == null) return false;
+
+        // If transitioning into the report state, consider it "started"
+        if (_playerAnimator.IsInTransition(_reportLayerIndex))
+        {
+            var nextInfo = _playerAnimator.GetNextAnimatorStateInfo(_reportLayerIndex);
+            if (nextInfo.shortNameHash == _reportStateHash)
+                return true;
+        }
+
+        // Or if we are already in the report state very early in its timeline
+        var currentInfo = _playerAnimator.GetCurrentAnimatorStateInfo(_reportLayerIndex);
+        if (currentInfo.shortNameHash == _reportStateHash && currentInfo.normalizedTime < 0.1f)
+            return true;
+
+        return false;
     }
 }
