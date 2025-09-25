@@ -1,16 +1,19 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.AI;
-using Synty.AnimationBaseLocomotion.Samples.InputSystem; // InputReader + generated Controls
+using Synty.AnimationBaseLocomotion.Samples.InputSystem;
 using System.Reflection;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 
-[RequireComponent(typeof(Collider))]
+[RequireComponent(typeof(Collider))
+]
 public class ReporterTriggerBox : MonoBehaviour
 {
     [Header("B-Roll Targets")]
-    [SerializeField] private Transform _bRollLookAt;         // "BRollLookAt"
-    [SerializeField] private Transform _bRollCameraPosition; // "BRollCameraPosition"
+    [SerializeField] private Transform _bRollLookAt;
+    [SerializeField] private Transform _bRollCameraPosition;
     [SerializeField] private Transform _initialCameraPosition;
 
     [Header("Recording Requirements (seconds)")]
@@ -20,10 +23,10 @@ public class ReporterTriggerBox : MonoBehaviour
     [Header("B-Roll Zoom (FOV)")]
     [SerializeField] private float _bRollMinFov = 20f;
     [SerializeField] private float _bRollMaxFov = 60f;
-    [SerializeField] private float _bRollZoomStep = 2.0f; // FOV change per scroll notch (~120 units)
+    [SerializeField] private float _bRollZoomStep = 2.0f;
 
     [Header("B-Roll Recording Gates")]
-    [Range(0f, 1f)] [SerializeField] private float _bRollZoomRequirement = 0.7f; // 70% toward min FOV
+    [Range(0f, 1f)] [SerializeField] private float _bRollZoomRequirement = 0.7f;
 
     [Header("UI Prompt")]
     [TextArea] [SerializeField] private string _enterPromptMessage = "Right Click: Enter Reporter Mode\n";
@@ -50,10 +53,7 @@ public class ReporterTriggerBox : MonoBehaviour
     private bool _playerInside;
     private bool _pendingUnlockOnReenable;
 
-    // Player UI
     private PlayerUI _playerUI;
-
-    // Player Animator
     private Animator _playerAnimator;
     private int _isReportingHash = Animator.StringToHash("isReporting");
 
@@ -85,7 +85,6 @@ public class ReporterTriggerBox : MonoBehaviour
     // Completion state
     private bool _bothComplete;
 
-    // For testing – becomes true once disabled after success
     [SerializeField] private bool _completedAndDisabled;
 
     // Coroutines
@@ -100,8 +99,19 @@ public class ReporterTriggerBox : MonoBehaviour
     private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
     private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
 
+    // -------- Static Progress Registry --------
+    private static readonly List<ReporterTriggerBox> _all = new List<ReporterTriggerBox>();
+    public static event System.Action ReportProgressChanged;
+    public static int TotalReports => _all.Count;
+    public static int CompletedReports => _all.Count(t => t._completedAndDisabled);
+    private static void RaiseProgressChanged() => ReportProgressChanged?.Invoke();
+    // ------------------------------------------
+
     private void Awake()
     {
+        // Register first so even if we disable this frame it's counted.
+        if (!_all.Contains(this)) _all.Add(this);
+
         var col = GetComponent<Collider>();
         col.isTrigger = true;
         _controls = new Controls();
@@ -111,6 +121,21 @@ public class ReporterTriggerBox : MonoBehaviour
         LoadProgress();
         EvaluateReportArtifactVisibility();
         EnsureAudioSource();
+
+        // If already fully complete from persistence, disable immediately (but still remain in list).
+        if (_bothComplete && !_completedAndDisabled)
+        {
+            _completedAndDisabled = true;
+            gameObject.SetActive(false);
+        }
+
+        RaiseProgressChanged();
+    }
+
+    private void OnDestroy()
+    {
+        _all.Remove(this);
+        RaiseProgressChanged();
     }
 
     private void OnEnable()
@@ -184,7 +209,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
         bool inReporterMode = IsReaderLockedOn(_playerInputReader);
 
-        // 1) Detect animation start
         if (inReporterMode && !_reportAnimDetected && DidReportAnimationStart())
         {
             _reportAnimDetected = true;
@@ -192,7 +216,6 @@ public class ReporterTriggerBox : MonoBehaviour
             _reporterAudioStarted = false;
         }
 
-        // 2) Delay gate
         if (inReporterMode && _reportAnimDetected)
         {
             if (_reporterDelayRemaining > 0f)
@@ -208,7 +231,6 @@ public class ReporterTriggerBox : MonoBehaviour
             }
         }
 
-        // 3) Accumulate time
         if (inReporterMode && _reportAnimDetected && _reporterDelayRemaining <= 0f && !_bothComplete)
         {
             if (_bRollActive)
@@ -229,10 +251,10 @@ public class ReporterTriggerBox : MonoBehaviour
                 _bothComplete = nowComplete;
                 EvaluateReportArtifactVisibility();
                 SaveProgress();
+                if (_bothComplete) RaiseProgressChanged();
             }
         }
 
-        // 4) UI
         if (_playerUI != null)
         {
             if (inReporterMode)
@@ -256,19 +278,16 @@ public class ReporterTriggerBox : MonoBehaviour
             }
         }
 
-        // 5) Auto revert if mode toggled off
         if (_bRollActive && !inReporterMode)
         {
             RevertBRoll();
         }
 
-        // 6) B key toggle
         if (inReporterMode && Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame)
         {
             ToggleBRoll();
         }
 
-        // 7) Zoom handling
         if (_bRollActive && Mouse.current != null && _cameraManCamera != null)
         {
             float scrollY = Mouse.current.scroll.ReadValue().y;
@@ -289,7 +308,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_playerInputReader.enabled)
         {
-            // ENTER reporter mode
+            // ENTER
             if (!IsReaderLockedOn(_playerInputReader))
             {
                 _playerInputReader.onLockOnToggled?.Invoke();
@@ -339,7 +358,7 @@ public class ReporterTriggerBox : MonoBehaviour
         }
         else
         {
-            // EXIT reporter mode
+            // EXIT
             _playerInputReader.enabled = true;
 
             if (IsReaderLockedOn(_playerInputReader))
@@ -371,11 +390,11 @@ public class ReporterTriggerBox : MonoBehaviour
             EvaluateReportArtifactVisibility();
             SaveProgress();
 
-            // Clear UI BEFORE disabling the trigger
             if (_bothComplete && !_completedAndDisabled)
             {
                 _playerUI?.UpdateText(string.Empty);
                 _completedAndDisabled = true;
+                RaiseProgressChanged();
                 gameObject.SetActive(false);
             }
         }
@@ -385,12 +404,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
     private void ToggleBRoll()
     {
-        if (_bRollActive)
-        {
-            RevertBRoll();
-            return;
-        }
-
+        if (_bRollActive) { RevertBRoll(); return; }
         TryActivateBRoll();
     }
 
@@ -642,18 +656,24 @@ public class ReporterTriggerBox : MonoBehaviour
         _audioFadeRoutine = null;
     }
 
-    // Progress helpers
     private bool IsReporterComplete() => _accumReporterSeconds >= Mathf.Max(0f, _requiredReporterSeconds - 0.0001f);
     private bool IsBRollComplete() => _accumBRollSeconds >= Mathf.Max(0f, _requiredBRollSeconds - 0.0001f);
 
     private void EvaluateReportArtifactVisibility()
     {
+        bool prev = _bothComplete;
         _bothComplete = IsReporterComplete() && IsBRollComplete();
         UpdateArtifactVisibility(inRecording: false);
 
         if (!string.IsNullOrEmpty(_reportSaveKey))
         {
             PlayerPrefs.SetInt(_reportSaveKey, _bothComplete ? 1 : 0);
+        }
+
+        if (_bothComplete && !prev)
+        {
+            // Progress just reached completion; notify (disable happens on exit)
+            RaiseProgressChanged();
         }
     }
 
