@@ -30,13 +30,13 @@ public class ReporterTriggerBox : MonoBehaviour
     [TextArea] [SerializeField] private string _reporterPromptMessage = "Right Click: Exit Reporter Mode\nB - B Roll\n";
 
     [Header("On Report (Disable when both recordings complete)")]
-    [SerializeField] private GameObject _reportArtifact;     // Assign the GameObject to hide/show
-    [SerializeField] private bool _destroyArtifactInstead = false; // Destroys when complete (can't be shown again)
-    [SerializeField] private string _reportSaveKey = "";     // Base key for persistence
+    [SerializeField] private GameObject _reportArtifact;
+    [SerializeField] private bool _destroyArtifactInstead = false;
+    [SerializeField] private string _reportSaveKey = "";
 
     [Header("Reporter Audio")]
-    [SerializeField] private AudioSource _reportAudioSource; // Optional; will be auto-created if null
-    [SerializeField] private AudioClip _reportClip;          // Your MP3 clip
+    [SerializeField] private AudioSource _reportAudioSource;
+    [SerializeField] private AudioClip _reportClip;
     [SerializeField] private float _reportVolume = 1f;
     [SerializeField] private float _fadeInDuration = 0.6f;
     [SerializeField] private float _fadeOutDuration = 0.6f;
@@ -53,7 +53,7 @@ public class ReporterTriggerBox : MonoBehaviour
     // Player UI
     private PlayerUI _playerUI;
 
-    // Player Animator (isReporting + report state detection)
+    // Player Animator
     private Animator _playerAnimator;
     private int _isReportingHash = Animator.StringToHash("isReporting");
 
@@ -69,11 +69,8 @@ public class ReporterTriggerBox : MonoBehaviour
     private Transform _cameraManTransform;
     private NavMeshAgent _cameraManAgent;
 
-    // If CameraMan has a follower script, disable it during Reporter Mode/B-Roll moves
     private FollowPlayer _cameraManFollower;
     private bool _cameraManFollowerWasEnabled;
-
-    // Agent tuning persistence
     private float _cameraManOriginalStoppingDistance = -1f;
 
     // Camera zoom cache
@@ -88,16 +85,17 @@ public class ReporterTriggerBox : MonoBehaviour
     // Completion state
     private bool _bothComplete;
 
-    // Move coroutine
-    private Coroutine _returnRoutine;
+    // For testing – becomes true once disabled after success
+    [SerializeField] private bool _completedAndDisabled;
 
-    // Audio fade coroutine
+    // Coroutines
+    private Coroutine _returnRoutine;
     private Coroutine _audioFadeRoutine;
 
-    // Animator-driven start state
-    private bool _reportAnimDetected;       // set once per session when A_A_Report begins
-    private float _reporterDelayRemaining;  // counts down after detection
-    private bool _reporterAudioStarted;     // audio started this session
+    // Animator-driven session flags
+    private bool _reportAnimDetected;
+    private float _reporterDelayRemaining;
+    private bool _reporterAudioStarted;
 
     private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
     private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
@@ -149,17 +147,13 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_bRollActive) RevertBRoll();
 
-        // Safety: restore FOV on exit and clear cache
         RestoreBRollFovToDefault(clearCache: true);
-
         StopReporterAudio();
 
-        // reset session flags
         _reportAnimDetected = false;
         _reporterDelayRemaining = 0f;
         _reporterAudioStarted = false;
 
-        // safety: animation flag off on leave
         SetAnimatorReporting(false);
 
         _playerInputReader.SuppressLockOnToggle = false;
@@ -190,7 +184,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         bool inReporterMode = IsReaderLockedOn(_playerInputReader);
 
-        // 1) Detect when A_A_Report starts (once per session)
+        // 1) Detect animation start
         if (inReporterMode && !_reportAnimDetected && DidReportAnimationStart())
         {
             _reportAnimDetected = true;
@@ -198,7 +192,7 @@ public class ReporterTriggerBox : MonoBehaviour
             _reporterAudioStarted = false;
         }
 
-        // 2) After detection, honor optional delay before starting audio/timers
+        // 2) Delay gate
         if (inReporterMode && _reportAnimDetected)
         {
             if (_reporterDelayRemaining > 0f)
@@ -214,12 +208,11 @@ public class ReporterTriggerBox : MonoBehaviour
             }
         }
 
-        // 3) Accumulate time only after animation detected and delay elapsed
+        // 3) Accumulate time
         if (inReporterMode && _reportAnimDetected && _reporterDelayRemaining <= 0f && !_bothComplete)
         {
             if (_bRollActive)
             {
-                // Only count B-Roll time when zoomed-in enough
                 if (IsBRollZoomedEnough())
                 {
                     _accumBRollSeconds = Mathf.Min(_requiredBRollSeconds, _accumBRollSeconds + Time.deltaTime);
@@ -239,7 +232,7 @@ public class ReporterTriggerBox : MonoBehaviour
             }
         }
 
-        // Prompt + counters
+        // 4) UI
         if (_playerUI != null)
         {
             if (inReporterMode)
@@ -247,14 +240,15 @@ public class ReporterTriggerBox : MonoBehaviour
                 float repLeft = Mathf.Max(0f, _requiredReporterSeconds - _accumReporterSeconds);
                 float brLeft = Mathf.Max(0f, _requiredBRollSeconds - _accumBRollSeconds);
 
-                if (_bRollActive && !IsBRollZoomedEnough())
+                string repLine = repLeft <= 0.001f ? "Footage Captured" : $"Footage left: {repLeft:0}s";
+                string brLine = brLeft <= 0.001f ? "B-Roll Captured" : $"B-Roll left: {brLeft:0}s";
+
+                if (_bRollActive && brLeft > 0f && !IsBRollZoomedEnough())
                 {
-                    _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s\nZoom in to record B-Roll");
+                    brLine += "\nZoom in to record B-Roll";
                 }
-                else
-                {
-                    _playerUI.UpdateText($"{_reporterPromptMessage}Footage left: {repLeft:0}s\nB-Roll left: {brLeft:0}s");
-                }
+
+                _playerUI.UpdateText($"{_reporterPromptMessage}{repLine}\n{brLine}");
             }
             else
             {
@@ -262,22 +256,22 @@ public class ReporterTriggerBox : MonoBehaviour
             }
         }
 
-        // If reporter mode turned off while B-Roll active, revert immediately
+        // 5) Auto revert if mode toggled off
         if (_bRollActive && !inReporterMode)
         {
             RevertBRoll();
         }
 
-        // Toggle B-Roll with B while locked-on inside the trigger
+        // 6) B key toggle
         if (inReporterMode && Keyboard.current != null && Keyboard.current.bKey.wasPressedThisFrame)
         {
             ToggleBRoll();
         }
 
-        // Handle zoom only while B-Roll is active
+        // 7) Zoom handling
         if (_bRollActive && Mouse.current != null && _cameraManCamera != null)
         {
-            float scrollY = Mouse.current.scroll.ReadValue().y; // +/-120 per notch typically
+            float scrollY = Mouse.current.scroll.ReadValue().y;
             if (Mathf.Abs(scrollY) > 0.01f)
             {
                 float delta = -scrollY * (_bRollZoomStep / 120f);
@@ -295,7 +289,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
         if (_playerInputReader.enabled)
         {
-            // ENTER REPORTER MODE
+            // ENTER reporter mode
             if (!IsReaderLockedOn(_playerInputReader))
             {
                 _playerInputReader.onLockOnToggled?.Invoke();
@@ -309,7 +303,6 @@ public class ReporterTriggerBox : MonoBehaviour
                 if (_cameraManOriginalStoppingDistance < 0f && _cameraManAgent != null)
                     _cameraManOriginalStoppingDistance = _cameraManAgent.stoppingDistance;
 
-                // Cache original FOV once per reporter session
                 if (_cameraManCamera != null && !_cameraManFovCached)
                 {
                     _cameraManOriginalFov = _cameraManCamera.fieldOfView;
@@ -336,22 +329,17 @@ public class ReporterTriggerBox : MonoBehaviour
                 Debug.LogWarning("[ReporterTriggerBox] CameraMan not found; cannot move to InitialCameraPosition.");
             }
 
-            // Reset animator-driven session flags
             _reportAnimDetected = false;
             _reporterDelayRemaining = 0f;
             _reporterAudioStarted = false;
 
-            // Signal animation graph to enter reporting blend tree
             SetAnimatorReporting(true);
-
-            // Hide artifact while actively recording (kept immediate)
             UpdateArtifactVisibility(inRecording: true);
-
             SaveProgress();
         }
         else
         {
-            // EXIT REPORTER MODE
+            // EXIT reporter mode
             _playerInputReader.enabled = true;
 
             if (IsReaderLockedOn(_playerInputReader))
@@ -372,7 +360,6 @@ public class ReporterTriggerBox : MonoBehaviour
 
             StopReporterAudio();
 
-            // Reset animator & session flags
             SetAnimatorReporting(false);
             _reportAnimDetected = false;
             _reporterDelayRemaining = 0f;
@@ -383,6 +370,14 @@ public class ReporterTriggerBox : MonoBehaviour
 
             EvaluateReportArtifactVisibility();
             SaveProgress();
+
+            // Clear UI BEFORE disabling the trigger
+            if (_bothComplete && !_completedAndDisabled)
+            {
+                _playerUI?.UpdateText(string.Empty);
+                _completedAndDisabled = true;
+                gameObject.SetActive(false);
+            }
         }
 
         _playerInputReader.SuppressLockOnToggle = false;
@@ -432,7 +427,6 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         SetFollowCameraTarget(_followPlayerCamera, _bRollLookAt);
-
         MoveCameraManTo(_bRollCameraPosition.position, 0f);
 
         _bRollActive = true;
@@ -445,7 +439,6 @@ public class ReporterTriggerBox : MonoBehaviour
             SetFollowCameraTarget(_followPlayerCamera, _originalLookAtTarget);
         }
 
-        // Restore original FOV for this reporter session (keep cache for subsequent B-Roll toggles)
         RestoreBRollFovToDefault(clearCache: false);
 
         if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh && _initialCameraPosition != null)
@@ -608,10 +601,7 @@ public class ReporterTriggerBox : MonoBehaviour
 
     private void StopReporterAudio()
     {
-        if (_reportAudioSource == null || !_reportAudioSource.isPlaying)
-        {
-            return;
-        }
+        if (_reportAudioSource == null || !_reportAudioSource.isPlaying) return;
 
         if (_audioFadeRoutine != null)
         {
@@ -652,7 +642,7 @@ public class ReporterTriggerBox : MonoBehaviour
         _audioFadeRoutine = null;
     }
 
-    // Progress helpers/persistence/artifact visibility
+    // Progress helpers
     private bool IsReporterComplete() => _accumReporterSeconds >= Mathf.Max(0f, _requiredReporterSeconds - 0.0001f);
     private bool IsBRollComplete() => _accumBRollSeconds >= Mathf.Max(0f, _requiredBRollSeconds - 0.0001f);
 
