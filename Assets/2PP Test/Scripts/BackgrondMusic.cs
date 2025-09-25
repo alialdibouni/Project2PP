@@ -45,7 +45,7 @@ public class BackgrondMusic : MonoBehaviour
         if (backgroundSource != null)
         {
             backgroundSource.loop = true;
-            //backgroundSource.volume = backgroundVolume;
+            backgroundSource.volume = backgroundVolume; // ensure initial level
             if (playBackgroundOnStart && !backgroundSource.isPlaying)
                 backgroundSource.Play();
         }
@@ -53,7 +53,6 @@ public class BackgrondMusic : MonoBehaviour
         if (chaseSource != null)
         {
             chaseSource.loop = true;
-            // Start silent; we fade in when chase begins
             chaseSource.volume = 0f;
             if (chaseSource.isPlaying)
                 chaseSource.Stop();
@@ -90,7 +89,8 @@ public class BackgrondMusic : MonoBehaviour
         }
     }
 
-    private void StartCrossfade(float chaseTarget, float backgroundTarget, float duration, bool ensurePlayChase, bool ensurePlayBackground)
+    private void StartCrossfade(float chaseTarget, float backgroundTarget, float duration,
+        bool ensurePlayChase, bool ensurePlayBackground)
     {
         if (_fadeCoroutine != null)
             StopCoroutine(_fadeCoroutine);
@@ -98,7 +98,8 @@ public class BackgrondMusic : MonoBehaviour
         _fadeCoroutine = StartCoroutine(CrossfadeRoutine(chaseTarget, backgroundTarget, duration, ensurePlayChase, ensurePlayBackground));
     }
 
-    private IEnumerator CrossfadeRoutine(float chaseTarget, float backgroundTarget, float duration, bool ensurePlayChase, bool ensurePlayBackground)
+    private IEnumerator CrossfadeRoutine(float chaseTarget, float backgroundTarget, float duration,
+        bool ensurePlayChase, bool ensurePlayBackground)
     {
         float startChase = chaseSource ? chaseSource.volume : 0f;
         float startBg = backgroundSource ? backgroundSource.volume : 0f;

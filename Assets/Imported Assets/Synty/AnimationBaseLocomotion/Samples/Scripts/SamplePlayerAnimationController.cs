@@ -616,6 +616,8 @@ namespace Synty.AnimationBaseLocomotion.Samples
         /// <inheritdoc cref="Update" />
         private void Update()
         {
+            if (PauseUpdates) return;
+
             switch (_currentState)
             {
                 case AnimationState.Locomotion:
@@ -1545,6 +1547,58 @@ namespace Synty.AnimationBaseLocomotion.Samples
         {
             DeactivateCrouch();
             SwitchState(AnimationState.Locomotion);
+        }
+
+        #endregion
+
+        #region Pause Handling
+
+        [HideInInspector] public bool PauseUpdates; // externally toggled (Enemy fade, etc.)
+
+        /// <summary>
+        /// Teleport the player safely and reset locomotion internal state so Update
+        /// will not immediately move them back or retain prior velocity.
+        /// </summary>
+        public void ForceRespawn(Vector3 worldPosition, bool resetMovement = true)
+        {
+            if (_controller == null)
+            {
+                Debug.LogWarning("[SamplePlayerAnimationController] CharacterController missing; cannot ForceRespawn.");
+                return;
+            }
+
+            bool wasEnabled = _controller.enabled;
+            _controller.enabled = false;
+
+            transform.position = worldPosition;
+            Physics.SyncTransforms();
+
+            if (resetMovement)
+            {
+                _velocity = Vector3.zero;
+                _moveDirection = Vector3.zero;
+                _targetVelocity = Vector3.zero;
+                _speed2D = 0f;
+                _currentMaxSpeed = 0f;
+                _targetMaxSpeed = 0f;
+                _isStarting = false;
+                _isStopped = true;
+                //_movementInputDetected = false;
+                _movementInputTapped = false;
+                _movementInputPressed = false;
+                _movementInputHeld = false;
+                _currentGait = GaitState.Idle;
+            }
+
+            _controller.enabled = wasEnabled;
+
+            // Small settle to ensure grounded state accuracy next frame
+            if (!_controller.isGrounded)
+            {
+                _controller.Move(Vector3.down * 0.05f);
+            }
+
+            UpdateAnimatorController();
         }
 
         #endregion
