@@ -19,6 +19,9 @@ public class ChaseState : BaseState
 
         // Start chase music crossfade
         BackgrondMusic.Instance?.BeginChase();
+
+        // ADD: notify global listeners that a chase began
+        Enemy.SignalChaseStart();
     }
 
     public override void Exit()
@@ -28,6 +31,9 @@ public class ChaseState : BaseState
 
         // End chase music crossfade (reference counted across multiple chases / enemies)
         BackgrondMusic.Instance?.EndChase();
+
+        // ADD: notify global listeners that a chase ended
+        Enemy.SignalChaseEnd();
     }
 
     public override void Perform()

@@ -48,6 +48,12 @@ public class ReporterTriggerBox : MonoBehaviour
     [Tooltip("Extra delay AFTER A_A_Report animation begins, before audio/timers start.")]
     [SerializeField] private float _reporterTimeDelay = 0.0f;
 
+    // ADD: chase gating
+    [Header("Chase Gating")]
+    [SerializeField] private bool _blockWhileChased = true;
+    [TextArea][SerializeField] private string _chasedPromptMessage = "You're currently being chased! Lose them before reporting.";
+    private bool _currentlyChased;
+
     private Controls _controls;
     private InputReader _playerInputReader;
     private bool _playerInside;
@@ -141,6 +147,10 @@ public class ReporterTriggerBox : MonoBehaviour
     private void OnEnable()
     {
         _controls.Player.LockOn.performed += OnLockOnPerformed;
+
+        // ADD: subscribe to global chase changes
+        Enemy.GlobalChaseChanged += OnGlobalChaseChanged;
+        _currentlyChased = Enemy.AnyChaseActive; // initialize
     }
 
     private void OnDisable()
@@ -148,6 +158,35 @@ public class ReporterTriggerBox : MonoBehaviour
         _controls.Player.LockOn.performed -= OnLockOnPerformed;
         _controls.Player.Disable();
         SaveProgress();
+
+        // ADD: unsubscribe
+        Enemy.GlobalChaseChanged -= OnGlobalChaseChanged;
+    }
+
+    // ADD: chase event handler
+    private void OnGlobalChaseChanged(bool active)
+    {
+        _currentlyChased = active;
+
+        if (!_blockWhileChased) return;
+
+        if (active)
+        {
+            // If a chase starts while inside reporter mode, force-exit immediately.
+            if (_playerInside && IsInReporterMode())
+            {
+                ForceExitReporterMode("Chase began");
+                if (_playerUI != null) _playerUI.UpdateText(_chasedPromptMessage);
+            }
+        }
+        else
+        {
+            // When chase ends, refresh prompt if inside.
+            if (_playerInside && _playerUI != null)
+            {
+                _playerUI.UpdateText(_enterPromptMessage);
+            }
+        }
     }
 
     private void OnTriggerEnter(Collider other)
@@ -160,8 +199,18 @@ public class ReporterTriggerBox : MonoBehaviour
         _playerAnimator = other.GetComponentInParent<Animator>();
         _playerInside = true;
 
-        _playerUI?.UpdateText(_enterPromptMessage);
-        _controls.Player.Enable();
+        // MOD: chase-gated prompt + controls
+        if (_blockWhileChased && _currentlyChased)
+        {
+            _playerUI?.UpdateText(_chasedPromptMessage);
+            _controls.Player.Disable(); // do not allow interaction
+        }
+        else
+        {
+            _playerUI?.UpdateText(_enterPromptMessage);
+            _controls.Player.Enable();
+        }
+
         EvaluateReportArtifactVisibility();
     }
 
@@ -206,6 +255,18 @@ public class ReporterTriggerBox : MonoBehaviour
     private void Update()
     {
         if (!_playerInside || _playerInputReader == null) return;
+
+        // ADD: hard gate while chased
+        if (_blockWhileChased && _currentlyChased)
+        {
+            if (IsInReporterMode())
+                ForceExitReporterMode("Chase active while inside trigger");
+
+            if (_playerUI != null)
+                _playerUI.UpdateText(_chasedPromptMessage);
+
+            return; // skip reporter logic while chased
+        }
 
         bool inReporterMode = IsReaderLockedOn(_playerInputReader);
 
@@ -303,6 +364,13 @@ public class ReporterTriggerBox : MonoBehaviour
     private void OnLockOnPerformed(UnityEngine.InputSystem.InputAction.CallbackContext ctx)
     {
         if (!_playerInside || _playerInputReader == null) return;
+
+        // ADD: block interaction while chased
+        if (_blockWhileChased && _currentlyChased)
+        {
+            _playerUI?.UpdateText(_chasedPromptMessage);
+            return;
+        }
 
         _playerInputReader.SuppressLockOnToggle = true;
 
@@ -782,5 +850,60 @@ public class ReporterTriggerBox : MonoBehaviour
         // Normalize: 0 = max FOV (zoomed out), 1 = min FOV (fully zoomed)
         float zoom01 = Mathf.InverseLerp(_bRollMaxFov, _bRollMinFov, _cameraManCamera.fieldOfView);
         return zoom01 >= _bRollZoomRequirement;
+    }
+
+    // ADD: helper to detect reporter mode from current state (input disabled or lock-on true)
+    private bool IsInReporterMode()
+    {
+        if (_playerInputReader == null) return false;
+        bool locked = IsReaderLockedOn(_playerInputReader);
+        bool inputDisabled = !_playerInputReader.enabled; // we disable input during reporter mode
+        return locked || inputDisabled;
+    }
+
+    // ADD: unified exit path reused for chase-forced exits
+    private void ForceExitReporterMode(string reason = null)
+    {
+        if (_playerInputReader == null) return;
+        if (!IsInReporterMode()) return;
+
+        _playerInputReader.enabled = true;
+
+        if (IsReaderLockedOn(_playerInputReader))
+        {
+            _playerInputReader.onLockOnToggled?.Invoke();
+            _playerInputReader.onSprintDeactivated?.Invoke();
+        }
+
+        if (_bRollActive) RevertBRoll();
+        else RestoreBRollFovToDefault(clearCache: true);
+
+        if (EnsureCameraManRefs() && _cameraManFollower != null)
+        {
+            if (_cameraManAgent != null && _cameraManAgent.isOnNavMesh) _cameraManAgent.ResetPath();
+            if (_cameraManOriginalStoppingDistance >= 0f) _cameraManAgent.stoppingDistance = _cameraManOriginalStoppingDistance;
+            _cameraManFollower.enabled = true;
+        }
+
+        StopReporterAudio();
+
+        SetAnimatorReporting(false);
+        _reportAnimDetected = false;
+        _reporterDelayRemaining = 0f;
+        _reporterAudioStarted = false;
+
+        ResetInputReaderInversionState(_playerInputReader);
+        _pendingUnlockOnReenable = false;
+
+        EvaluateReportArtifactVisibility();
+        SaveProgress();
+
+        if (_bothComplete && !_completedAndDisabled)
+        {
+            _playerUI?.UpdateText(string.Empty);
+            _completedAndDisabled = true;
+            RaiseProgressChanged();
+            gameObject.SetActive(false);
+        }
     }
 }

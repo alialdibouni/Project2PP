@@ -1,3 +1,4 @@
+using System; // ADD: for Action
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -6,6 +7,28 @@ using Synty.AnimationBaseLocomotion.Samples; // for SamplePlayerAnimationControl
 
 public class Enemy : MonoBehaviour
 {
+    // -------- ADD: Global chase status (reference counted across enemies) --------
+    public static event Action<bool> GlobalChaseChanged;
+    private static int s_activeChases;
+    public static bool AnyChaseActive => s_activeChases > 0;
+
+    public static void SignalChaseStart()
+    {
+        int prev = s_activeChases;
+        s_activeChases++;
+        if (prev == 0 && s_activeChases == 1)
+            GlobalChaseChanged?.Invoke(true);
+    }
+
+    public static void SignalChaseEnd()
+    {
+        int prev = s_activeChases;
+        s_activeChases = Mathf.Max(0, s_activeChases - 1);
+        if (prev > 0 && s_activeChases == 0)
+            GlobalChaseChanged?.Invoke(false);
+    }
+    // ---------------------------------------------------------------------------
+    
     private StateMachine stateMachine;
     private NavMeshAgent agent;
     private GameObject player;
@@ -211,7 +234,10 @@ public class Enemy : MonoBehaviour
         // Fisher-Yates shuffle
         for (int i = shuffleBag.Count - 1; i > 0; i--)
         {
-            int j = Random.Range(0, i + 1);
+            // Replace this line:
+            // int j = Random.Range(0, i + 1);
+            // With this line:
+            int j = UnityEngine.Random.Range(0, i + 1);
             int tmp = shuffleBag[i];
             shuffleBag[i] = shuffleBag[j];
             shuffleBag[j] = tmp;
