@@ -1,4 +1,5 @@
-using System; // ADD: for Action
+using System; // ADD
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -7,6 +8,9 @@ using Synty.AnimationBaseLocomotion.Samples; // for SamplePlayerAnimationControl
 
 public class Enemy : MonoBehaviour
 {
+    // ADD: global notification when the player is caught
+    public static event Action PlayerCaught;
+
     // -------- ADD: Global chase status (reference counted across enemies) --------
     public static event Action<bool> GlobalChaseChanged;
     private static int s_activeChases;
@@ -268,6 +272,9 @@ public class Enemy : MonoBehaviour
     private IEnumerator CatchPlayerRoutine()
     {
         isProcessingCatch = true;
+
+        // ADD: notify listeners immediately
+        PlayerCaught?.Invoke();
 
         if (agent != null)
         {
