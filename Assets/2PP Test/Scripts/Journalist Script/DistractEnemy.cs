@@ -70,6 +70,13 @@ public class DistractEnemy : MonoBehaviour
     [Tooltip("If true, onActivated still fires even if no guard is found in range.")]
     [SerializeField] private bool invokeOnInteractEvenIfNoGuard = true; // ADD
 
+    // ADD: continuous acquisition while active
+    [Header("While Active Target Acquisition")]
+    [Tooltip("While the distraction is active, keep scanning and assign guards that enter the radius.")]
+    [SerializeField] private bool assignTargetsContinuouslyWhileActive = true;
+    [Tooltip("Seconds between scans while active.")]
+    [SerializeField] private float scanIntervalWhileActive = 0.2f;
+
     private bool _playerInside;
     private PlayerUI _playerUI;
     private float _cooldownRemaining;
@@ -78,13 +85,15 @@ public class DistractEnemy : MonoBehaviour
     private bool _active;
     private float _activeTimer;
     private bool _consumed;
+
+    private float _nextScanTime;
     private readonly List<Enemy> _activeTargets = new List<Enemy>();
+    private readonly HashSet<Enemy> _assignedThisActivation = new HashSet<Enemy>(); // ADD
 
     private void OnTriggerEnter(Collider other)
     {
         if (!requirePlayerInside) return;
 
-        // Detect player by presence of InputReader (consistent with ReporterTriggerBox usage)
         var reader = other.GetComponentInParent<InputReader>();
         if (reader == null) return;
 
@@ -121,7 +130,6 @@ public class DistractEnemy : MonoBehaviour
         if (_cooldownRemaining > 0f)
             _cooldownRemaining -= Time.deltaTime;
 
-        // Update the UI prompt dynamically if we own it
         if (_promptShownByUs && _playerUI != null && showPrompt)
         {
             _playerUI.UpdateText(GetCurrentPrompt());
@@ -130,6 +138,13 @@ public class DistractEnemy : MonoBehaviour
         if (_active)
         {
             _activeTimer += Time.deltaTime;
+
+            // ADD: keep assigning new guards that enter the radius
+            if (assignTargetsContinuouslyWhileActive && Time.time >= _nextScanTime)
+            {
+                _nextScanTime = Time.time + scanIntervalWhileActive;
+                ScanAndAssignNewTargets();
+            }
 
             // Stop when any guard arrives
             if (stopWhenGuardArrives && HasAnyTargetArrived())
@@ -165,6 +180,11 @@ public class DistractEnemy : MonoBehaviour
         List<Enemy> hits = null;
         Enemy closest = null;
 
+        // NEW ACTIVATION: reset assignment tracker
+        _assignedThisActivation.Clear();
+        _activeTargets.Clear();
+        _nextScanTime = Time.time; // allow immediate scan
+
         if (all != null && all.Length > 0)
         {
             hits = new List<Enemy>();
@@ -187,13 +207,11 @@ public class DistractEnemy : MonoBehaviour
             }
         }
 
-        _activeTargets.Clear();
-
         if (hits == null || hits.Count == 0)
         {
             if (!invokeOnInteractEvenIfNoGuard) return false;
 
-            // No guards, but still fire external behavior (radio, alarm, etc.")
+            // No guards, but still activate and keep scanning while active
             BeginDistraction();
             _cooldownRemaining = cooldownSeconds;
             return true;
@@ -203,13 +221,16 @@ public class DistractEnemy : MonoBehaviour
         {
             ForceEnemySearch(closest, anchor);
             _activeTargets.Add(closest);
+            _assignedThisActivation.Add(closest);
         }
         else
         {
             for (int i = 0; i < hits.Count; i++)
             {
-                ForceEnemySearch(hits[i], anchor);
-                _activeTargets.Add(hits[i]);
+                var e = hits[i];
+                ForceEnemySearch(e, anchor);
+                _activeTargets.Add(e);
+                _assignedThisActivation.Add(e);
             }
         }
 
@@ -270,6 +291,7 @@ public class DistractEnemy : MonoBehaviour
 
         _active = false;
         _activeTargets.Clear();
+        _assignedThisActivation.Clear();
 
         if (singleUse)
             _consumed = true;
@@ -346,6 +368,62 @@ public class DistractEnemy : MonoBehaviour
         }
 
         return false;
+    }
+
+    // ADD: scan scene while active and assign new entrants
+    private void ScanAndAssignNewTargets()
+    {
+        if (!_active) return;
+
+        Vector3 anchor = (searchPoint != null ? searchPoint.position : transform.position);
+        float maxSqr = distractRadius * distractRadius;
+
+        // If closest-only and we already assigned one, do nothing
+        if (affectClosestOnly && _activeTargets.Count > 0)
+            return;
+
+        Enemy[] all = FindObjectsOfType<Enemy>();
+        if (all == null || all.Length == 0) return;
+
+        if (affectClosestOnly)
+        {
+            Enemy best = null;
+            float bestSqr = float.MaxValue;
+
+            foreach (var e in all)
+            {
+                if (e == null || _assignedThisActivation.Contains(e)) continue;
+
+                float sqr = (e.transform.position - anchor).sqrMagnitude;
+                if (sqr <= maxSqr && sqr < bestSqr)
+                {
+                    bestSqr = sqr;
+                    best = e;
+                }
+            }
+
+            if (best != null)
+            {
+                ForceEnemySearch(best, anchor);
+                _activeTargets.Add(best);
+                _assignedThisActivation.Add(best);
+            }
+        }
+        else
+        {
+            foreach (var e in all)
+            {
+                if (e == null || _assignedThisActivation.Contains(e)) continue;
+
+                float sqr = (e.transform.position - anchor).sqrMagnitude;
+                if (sqr <= maxSqr)
+                {
+                    ForceEnemySearch(e, anchor);
+                    _activeTargets.Add(e);
+                    _assignedThisActivation.Add(e);
+                }
+            }
+        }
     }
 
     private void EnsureAudioSource()
