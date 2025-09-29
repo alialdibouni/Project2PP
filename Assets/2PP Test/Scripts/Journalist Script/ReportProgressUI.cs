@@ -23,5 +23,9 @@ public class ReportProgressUI : MonoBehaviour
         int done = ReporterTriggerBox.CompletedReports;
         // If you want "remaining" instead, use: int remaining = total - done;
         reportsText.text = $"Reports completed: {done}/{total}"; 
+        if(done >= total)
+        {
+            reportsText.text += "\nAll reports completed!\n Return to the News Van";
+        }
     }
 }
