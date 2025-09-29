@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System;
 
 [RequireComponent(typeof(Collider))
 ]
@@ -44,6 +45,19 @@ public class ReporterTriggerBox : MonoBehaviour
     [SerializeField] private float _fadeInDuration = 0.6f;
     [SerializeField] private float _fadeOutDuration = 0.6f;
 
+    [Header("Reporter Entry VO")]
+    [Tooltip("Random one-shot played once when entering Reporter Mode.")]
+    [SerializeField] private List<AudioClip> _reporterEntryClips = new List<AudioClip>();
+    [Tooltip("Optional AudioSource used for entry one-shots. Falls back to _reportAudioSource if null.")]
+    [SerializeField] private AudioSource _entryAudioSource;
+    [Range(0f, 1f)] [SerializeField] private float _entryVolume = 1f;
+    [Tooltip("If true, skip entry VO if the exact same clip is already playing on the same source.")]
+    [SerializeField] private bool _entryAvoidOverlap = true;
+
+    [Header("Reporter Entry VO (Global Fallback)")]
+    [SerializeField] private bool _useGlobalEntryClips = false;
+    [SerializeField] private List<AudioClip> _globalEntryClips = new List<AudioClip>();
+
     [Header("Reporter Start Delay")]
     [Tooltip("Extra delay AFTER A_A_Report animation begins, before audio/timers start.")]
     [SerializeField] private float _reporterTimeDelay = 0.0f;
@@ -52,7 +66,7 @@ public class ReporterTriggerBox : MonoBehaviour
     [Header("Chase Gating")]
     [SerializeField] private bool _blockWhileChased = true;
     [TextArea][SerializeField] private string _chasedPromptMessage = "You're currently being chased! Lose them before reporting.";
-    private bool _currentlyChased;
+    private bool _currentlyChased;  
 
     private Controls _controls;
     private InputReader _playerInputReader;
@@ -102,6 +116,16 @@ public class ReporterTriggerBox : MonoBehaviour
     private float _reporterDelayRemaining;
     private bool _reporterAudioStarted;
 
+    // Entry VO guard (per Reporter Mode session)
+    private bool _entryClipPlayedThisSession;
+
+    // NEW: shuffle-bag state for entry VO (per ReporterTriggerBox instance)
+    private List<int> _entryShuffleBag;
+    private int _entryShuffleIndex;
+
+    // Global anti-repeat across all ReporterTriggerBoxes
+    private static int _lastEntryIndex = -1;
+
     private string RepSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_RepSec";
     private string BRollSecondsKey => string.IsNullOrEmpty(_reportSaveKey) ? null : _reportSaveKey + "_BRollSec";
 
@@ -135,6 +159,9 @@ public class ReporterTriggerBox : MonoBehaviour
             gameObject.SetActive(false);
         }
 
+        // Initialize entry VO shuffle bag
+        RebuildEntryShuffleBag();
+
         RaiseProgressChanged();
     }
 
@@ -148,9 +175,11 @@ public class ReporterTriggerBox : MonoBehaviour
     {
         _controls.Player.LockOn.performed += OnLockOnPerformed;
 
-        // ADD: subscribe to global chase changes
         Enemy.GlobalChaseChanged += OnGlobalChaseChanged;
-        _currentlyChased = Enemy.AnyChaseActive; // initialize
+        _currentlyChased = Enemy.AnyChaseActive;
+
+        // Rebuild the bag when re-enabled (in case lists changed)
+        RebuildEntryShuffleBag();
     }
 
     private void OnDisable()
@@ -249,6 +278,7 @@ public class ReporterTriggerBox : MonoBehaviour
         _playerUI = null;
         _pendingUnlockOnReenable = false;
 
+        _entryClipPlayedThisSession = false; // reset entry VO per-session guard
         _controls.Player.Disable();
     }
 
@@ -421,6 +451,10 @@ public class ReporterTriggerBox : MonoBehaviour
             _reporterAudioStarted = false;
 
             SetAnimatorReporting(true);
+
+            // NEW: play a single random entry VO (one-shot) per Reporter Mode session
+            PlayEntryOneShot();
+
             UpdateArtifactVisibility(inRecording: true);
             SaveProgress();
         }
@@ -451,6 +485,9 @@ public class ReporterTriggerBox : MonoBehaviour
             _reportAnimDetected = false;
             _reporterDelayRemaining = 0f;
             _reporterAudioStarted = false;
+
+            // reset entry VO guard for next entry
+            _entryClipPlayedThisSession = false;
 
             ResetInputReaderInversionState(_playerInputReader);
             _pendingUnlockOnReenable = false;
@@ -660,6 +697,25 @@ public class ReporterTriggerBox : MonoBehaviour
         if (_reportClip != null) _reportAudioSource.clip = _reportClip;
     }
 
+    // Add this helper near the other audio helpers
+    private void EnsureEntryAudioSource()
+    {
+        if (_entryAudioSource != null) return;
+
+        // Create a dedicated 2D one-shot source for entry VO
+        _entryAudioSource = gameObject.AddComponent<AudioSource>();
+        _entryAudioSource.playOnAwake = false;
+        _entryAudioSource.loop = false;
+        _entryAudioSource.spatialBlend = 0f; // 2D
+        _entryAudioSource.volume = Mathf.Clamp01(_entryVolume);
+
+        // Route through same mixer group as reporter audio if available
+        if (_reportAudioSource != null)
+        {
+            try { _entryAudioSource.outputAudioMixerGroup = _reportAudioSource.outputAudioMixerGroup; } catch { /* optional */ }
+        }
+    }
+
     private void StartReporterAudio()
     {
         if (_reportClip == null) return;
@@ -692,6 +748,129 @@ public class ReporterTriggerBox : MonoBehaviour
         }
 
         _audioFadeRoutine = StartCoroutine(FadeOutAndStop(_reportAudioSource, _fadeOutDuration));
+    }
+
+    // ------- Entry VO helpers (shuffle-bag like Enemy.cs) -------
+
+    private IReadOnlyList<AudioClip> GetActiveEntryClips()
+    {
+        if (_reporterEntryClips != null && _reporterEntryClips.Count > 0)
+            return _reporterEntryClips;
+
+        if (_useGlobalEntryClips && _globalEntryClips != null && _globalEntryClips.Count > 0)
+            return _globalEntryClips;
+
+        return Array.Empty<AudioClip>();
+    }
+
+    private void RebuildEntryShuffleBag()
+    {
+        var clips = GetActiveEntryClips();
+        _entryShuffleBag = new List<int>();
+        for (int i = 0; i < clips.Count; i++)
+        {
+            if (clips[i] != null)
+                _entryShuffleBag.Add(i);
+        }
+
+        // Fisher-Yates shuffle
+        for (int i = _entryShuffleBag.Count - 1; i > 0; i--)
+        {
+            int j = UnityEngine.Random.Range(0, i + 1);
+            (_entryShuffleBag[i], _entryShuffleBag[j]) = (_entryShuffleBag[j], _entryShuffleBag[i]);
+        }
+        _entryShuffleIndex = 0;
+    }
+
+    private int GetNextEntryShuffleIndex()
+    {
+        var clips = GetActiveEntryClips();
+        if (clips.Count == 0) return -1;
+
+        if (_entryShuffleBag == null || _entryShuffleBag.Count == 0 || _entryShuffleIndex >= _entryShuffleBag.Count)
+            RebuildEntryShuffleBag();
+
+        if (_entryShuffleBag.Count == 0) return -1;
+
+        int idx = _entryShuffleBag[_entryShuffleIndex++];
+
+        // Global immediate anti-repeat: avoid same index as last across boxes if possible
+        if (_entryShuffleBag.Count > 1 && idx == _lastEntryIndex)
+        {
+            // if possible, pick the next in bag this round
+            if (_entryShuffleIndex < _entryShuffleBag.Count)
+                idx = _entryShuffleBag[_entryShuffleIndex++];
+            else
+            {
+                // bag exhausted; rebuild and pick first
+                RebuildEntryShuffleBag();
+                if (_entryShuffleBag.Count > 0) idx = _entryShuffleBag[_entryShuffleIndex++];
+            }
+        }
+
+        return idx;
+    }
+
+    // ------------------------------------------------------------
+
+    // Replace your PlayEntryOneShot() with this version
+    private void PlayEntryOneShot()
+    {
+        if (_entryClipPlayedThisSession) return;
+
+        var clips = GetActiveEntryClips();
+        if (clips.Count == 0) return;
+
+        int idx = GetNextEntryShuffleIndex();
+        if (idx < 0 || idx >= clips.Count) return;
+
+        var clip = clips[idx];
+        if (clip == null) return;
+
+        EnsureEntryAudioSource();
+
+        var src = _entryAudioSource != null ? _entryAudioSource : _reportAudioSource;
+        if (src == null)
+        {
+            EnsureAudioSource();
+            src = _reportAudioSource;
+            if (src == null) return;
+        }
+
+        // Avoid overlap with same clip if requested
+        if (_entryAvoidOverlap && src.isPlaying && src.clip == clip)
+        {
+            _entryClipPlayedThisSession = true;
+            _lastEntryIndex = idx;
+            return;
+        }
+
+        // If fallback to the reporter loop source and it's muted, spawn a temp one-shot so it's audible
+        if (ReferenceEquals(src, _reportAudioSource) && _reportAudioSource != null && _reportAudioSource.volume <= 0.001f)
+        {
+            var go = new GameObject("EntryOneShotTemp");
+            go.transform.SetParent(transform, false);
+            var a = go.AddComponent<AudioSource>();
+            a.playOnAwake = false;
+            a.loop = false;
+            a.spatialBlend = 0f;
+            a.volume = Mathf.Clamp01(_entryVolume);
+            try { a.outputAudioMixerGroup = _reportAudioSource.outputAudioMixerGroup; } catch { }
+            a.clip = clip;
+            a.Play();
+            Destroy(go, clip.length + 0.1f);
+
+            _entryClipPlayedThisSession = true;
+            _lastEntryIndex = idx;
+            return;
+        }
+
+        if (ReferenceEquals(src, _entryAudioSource))
+            _entryAudioSource.volume = Mathf.Clamp01(_entryVolume);
+
+        src.PlayOneShot(clip, Mathf.Clamp01(_entryVolume));
+        _entryClipPlayedThisSession = true;
+        _lastEntryIndex = idx;
     }
 
     private IEnumerator FadeAudio(AudioSource src, float from, float to, float duration)
@@ -891,6 +1070,9 @@ public class ReporterTriggerBox : MonoBehaviour
         _reportAnimDetected = false;
         _reporterDelayRemaining = 0f;
         _reporterAudioStarted = false;
+
+        // reset entry VO guard as we exit
+        _entryClipPlayedThisSession = false;
 
         ResetInputReaderInversionState(_playerInputReader);
         _pendingUnlockOnReenable = false;
