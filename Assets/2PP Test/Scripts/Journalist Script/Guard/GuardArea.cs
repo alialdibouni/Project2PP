@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // Attach this to the trigger volume that defines the guard area.
@@ -6,13 +7,21 @@ using UnityEngine;
 [RequireComponent(typeof(Collider))]
 public class GuardArea : MonoBehaviour
 {
-    [SerializeField] private Enemy enemy;
+    [SerializeField] private List<Enemy> enemies = new List<Enemy>();
 
     private void Awake()
     {
-        if (enemy == null)
+        if (enemies == null)
+            enemies = new List<Enemy>();
+
+        // Backward-compat: if none assigned, try populate from parents
+        if (enemies.Count == 0)
         {
-            enemy = GetComponentInParent<Enemy>();
+            var found = GetComponentsInParent<Enemy>(includeInactive: true);
+            if (found != null && found.Length > 0)
+            {
+                enemies.AddRange(found);
+            }
         }
 
         var col = GetComponent<Collider>();
@@ -21,25 +30,34 @@ public class GuardArea : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Player") && enemy != null)
+        if (!other.CompareTag("Player")) return;
+
+        for (int i = 0; i < enemies.Count; i++)
         {
-            enemy.SetPlayerInGuardArea(true);
+            if (enemies[i] != null)
+                enemies[i].SetPlayerInGuardArea(true);
         }
     }
 
     private void OnTriggerStay(Collider other)
     {
-        if (other.CompareTag("Player") && enemy != null)
+        if (!other.CompareTag("Player")) return;
+
+        for (int i = 0; i < enemies.Count; i++)
         {
-            enemy.SetPlayerInGuardArea(true);
+            if (enemies[i] != null)
+                enemies[i].SetPlayerInGuardArea(true);
         }
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.CompareTag("Player") && enemy != null)
+        if (!other.CompareTag("Player")) return;
+
+        for (int i = 0; i < enemies.Count; i++)
         {
-            enemy.SetPlayerInGuardArea(false);
+            if (enemies[i] != null)
+                enemies[i].SetPlayerInGuardArea(false);
         }
     }
 }
