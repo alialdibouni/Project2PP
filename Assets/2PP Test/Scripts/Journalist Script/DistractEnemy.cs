@@ -77,6 +77,13 @@ public class DistractEnemy : MonoBehaviour
     [Tooltip("Seconds between scans while active.")]
     [SerializeField] private float scanIntervalWhileActive = 0.2f;
 
+    // NEW: Sight distance reduction like WhistleDistraction
+    [Header("Sight Distance Reduction")]
+    [Tooltip("Temporarily reduce affected guards' sightDistance while they are searching due to this distraction.")]
+    [SerializeField] private bool reduceSightDistanceWhileSearching = true;
+    [Tooltip("Sight distance applied to affected guards while searching.")]
+    [SerializeField] private float reducedSightDistance = 2f;
+
     private bool _playerInside;
     private PlayerUI _playerUI;
     private float _cooldownRemaining;
@@ -89,6 +96,9 @@ public class DistractEnemy : MonoBehaviour
     private float _nextScanTime;
     private readonly List<Enemy> _activeTargets = new List<Enemy>();
     private readonly HashSet<Enemy> _assignedThisActivation = new HashSet<Enemy>(); // ADD
+
+    // Track modified enemies (enemy -> original sightDistance)
+    private readonly Dictionary<Enemy, float> _modifiedEnemies = new Dictionary<Enemy, float>();
 
     private void OnTriggerEnter(Collider other)
     {
@@ -130,6 +140,7 @@ public class DistractEnemy : MonoBehaviour
         if (_cooldownRemaining > 0f)
             _cooldownRemaining -= Time.deltaTime;
 
+        // Keep prompt live-updating
         if (_promptShownByUs && _playerUI != null && showPrompt)
         {
             _playerUI.UpdateText(GetCurrentPrompt());
@@ -139,7 +150,7 @@ public class DistractEnemy : MonoBehaviour
         {
             _activeTimer += Time.deltaTime;
 
-            // ADD: keep assigning new guards that enter the radius
+            // Keep assigning new guards that enter the radius
             if (assignTargetsContinuouslyWhileActive && Time.time >= _nextScanTime)
             {
                 _nextScanTime = Time.time + scanIntervalWhileActive;
@@ -156,6 +167,9 @@ public class DistractEnemy : MonoBehaviour
                 StopDistraction(guardArrived: false);
             }
         }
+
+        // Maintain and restore sightDistance while enemies leave SearchState
+        MaintainModifiedEnemies();
 
         if (requirePlayerInside && !_playerInside) return;
         if (_consumed) return; // single-use consumed
@@ -219,7 +233,7 @@ public class DistractEnemy : MonoBehaviour
 
         if (affectClosestOnly)
         {
-            ForceEnemySearch(closest, anchor);
+            ApplyDistractionToEnemy(closest, anchor);
             _activeTargets.Add(closest);
             _assignedThisActivation.Add(closest);
         }
@@ -228,7 +242,7 @@ public class DistractEnemy : MonoBehaviour
             for (int i = 0; i < hits.Count; i++)
             {
                 var e = hits[i];
-                ForceEnemySearch(e, anchor);
+                ApplyDistractionToEnemy(e, anchor);
                 _activeTargets.Add(e);
                 _assignedThisActivation.Add(e);
             }
@@ -293,6 +307,9 @@ public class DistractEnemy : MonoBehaviour
         _activeTargets.Clear();
         _assignedThisActivation.Clear();
 
+        // Restore any modified sight distances immediately when the distraction ends
+        RestoreAllSightDistances();
+
         if (singleUse)
             _consumed = true;
 
@@ -333,6 +350,9 @@ public class DistractEnemy : MonoBehaviour
     private void OnDisable()
     {
         Enemy.PlayerCaught -= OnPlayerCaught;
+
+        // Ensure any temporary sight reductions are restored if this object is disabled
+        RestoreAllSightDistances();
     }
 
     // ADD: player caught handler -> fade and stop distraction
@@ -404,7 +424,7 @@ public class DistractEnemy : MonoBehaviour
 
             if (best != null)
             {
-                ForceEnemySearch(best, anchor);
+                ApplyDistractionToEnemy(best, anchor);
                 _activeTargets.Add(best);
                 _assignedThisActivation.Add(best);
             }
@@ -418,7 +438,7 @@ public class DistractEnemy : MonoBehaviour
                 float sqr = (e.transform.position - anchor).sqrMagnitude;
                 if (sqr <= maxSqr)
                 {
-                    ForceEnemySearch(e, anchor);
+                    ApplyDistractionToEnemy(e, anchor);
                     _activeTargets.Add(e);
                     _assignedThisActivation.Add(e);
                 }
@@ -443,6 +463,24 @@ public class DistractEnemy : MonoBehaviour
         }
     }
 
+    // Modified: apply both search state and optional sight distance reduction
+    private void ApplyDistractionToEnemy(Enemy enemy, Vector3 searchAt)
+    {
+        if (enemy == null) return;
+
+        if (reduceSightDistanceWhileSearching)
+        {
+            if (!_modifiedEnemies.ContainsKey(enemy))
+            {
+                _modifiedEnemies[enemy] = enemy.sightDistance;
+                enemy.sightDistance = Mathf.Max(0.1f, reducedSightDistance);
+            }
+        }
+
+        // Ensure guards head to the distract location and enter SearchState
+        ForceEnemySearch(enemy, searchAt);
+    }
+
     private static void ForceEnemySearch(Enemy enemy, Vector3 searchAt)
     {
         if (enemy == null) return;
@@ -456,6 +494,66 @@ public class DistractEnemy : MonoBehaviour
         {
             sm.ChangeState(new SearchState());
         }
+    }
+
+    // Track and restore sight distances as enemies leave SearchState (like WhistleDistraction)
+    private void MaintainModifiedEnemies()
+    {
+        if (_modifiedEnemies.Count == 0) return;
+
+        var toRestore = ListPool<Enemy>.Get();
+
+        foreach (var kvp in _modifiedEnemies)
+        {
+            var e = kvp.Key;
+            if (e == null)
+            {
+                toRestore.Add(e);
+                continue;
+            }
+
+            var sm = e.GetComponent<StateMachine>();
+            bool stillSearching = false;
+            if (sm != null && sm.activeState != null)
+            {
+                string stateName = sm.activeState.GetType().Name;
+                if (stateName.Contains("Search")) stillSearching = true;
+            }
+
+            if (!stillSearching)
+            {
+                toRestore.Add(e);
+            }
+        }
+
+        if (toRestore.Count > 0)
+        {
+            foreach (var e in toRestore)
+            {
+                if (e != null && _modifiedEnemies.TryGetValue(e, out var original))
+                {
+                    e.sightDistance = original;
+                }
+                _modifiedEnemies.Remove(e);
+            }
+        }
+
+        ListPool<Enemy>.Release(toRestore);
+    }
+
+    private void RestoreAllSightDistances()
+    {
+        if (_modifiedEnemies.Count == 0) return;
+
+        foreach (var kvp in _modifiedEnemies)
+        {
+            var e = kvp.Key;
+            if (e != null)
+            {
+                e.sightDistance = kvp.Value;
+            }
+        }
+        _modifiedEnemies.Clear();
     }
 
     private void OnDrawGizmosSelected()

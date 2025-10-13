@@ -39,6 +39,7 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
 
         [Header("Options")]
         [SerializeField] private bool _invertHorizontalOnLockOn = true;
+        [SerializeField] private bool _invertVerticalOnLockOn = false; // NEW: invert W/S while locked-on
         private bool _isLockedOnLocal;
 
         // NEW: allow triggers/UI to suppress lock-on toggling
@@ -80,10 +81,11 @@ namespace Synty.AnimationBaseLocomotion.Samples.InputSystem
         {
             Vector2 value = context.ReadValue<Vector2>();
 
-            // Invert horizontal when locked on (so A/D are flipped)
-            if (_invertHorizontalOnLockOn && _isLockedOnLocal)
+            // Invert axes when locked on as configured
+            if (_isLockedOnLocal)
             {
-                value.x = -value.x;
+                if (_invertHorizontalOnLockOn) value.x = -value.x;
+                if (_invertVerticalOnLockOn) value.y = -value.y; // invert W/S
             }
 
             _moveComposite = value;
